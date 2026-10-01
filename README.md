@@ -70,6 +70,12 @@ Login, registro y refresh devuelven `{ user, accessToken, refreshToken, dailyGra
 - **Logout** incrementa `tokenVersion` y con eso invalida todos los refresh tokens del usuario
   (en todos sus dispositivos). Los access tokens siguen siendo válidos hasta que expiran.
 
+## Motor de truco
+
+`src/game/truco/` es un motor puro (sin base de datos, sockets ni reloj) que recibe estado + acción y
+devuelve el nuevo estado + eventos, o lanza un `RuleError`. Las reglas y variantes implementadas están en
+[docs/TRUCO_RULES.md](docs/TRUCO_RULES.md). En esta fase se juega **sin flor**.
+
 ## Despliegue y escalado
 
 Se despliega en Railway según `deployment-guide.md` de la skill. **Tiene que correr una sola

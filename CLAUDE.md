@@ -52,8 +52,25 @@ Corren en serie (`fileParallelism: false`) contra Atlas, por eso tardan ~30 s.
 - **CORS:** la política está en `config/cors.js` para reutilizarla en Socket.IO.
 - **Una sola instancia** en producción (Railway): desde M4 las partidas activas viven en memoria.
 
+## Motor de truco (`src/game/truco/`)
+
+- **Puro**: `applyAction(state, playerId, action) → { state, events }` o lanza `RuleError { code }`. Nunca muta
+  el estado recibido (usa `structuredClone`). Sin DB, sockets ni reloj: la aleatoriedad entra solo por el mazo
+  que se pasa a `dealNextHand(state, shuffleDeck())`, y los timers viven en el servicio que lo orquesta
+  (`applyTimeout`, `forfeitMatch`).
+- Ciclo: `createMatchState` → `dealNextHand` → `applyAction`... hasta `phase === 'hand_over'` → `dealNextHand` …
+  → `phase === 'finished'`.
+- `check()` en `engine.js` es la **única** fuente de verdad de legalidad; `getAvailableActions` la reutiliza
+  probando cada tipo de acción. Una regla nueva va en `check()` y en el `apply`, nunca en el front.
+- `views.js#projectStateFor` es lo único que se envía a un cliente. `state.hand.deck` y `state.hand.dealt`
+  nunca salen de ahí; el test `views` lo verifica sobre partidas simuladas completas.
+- Equipos por asiento (`team = seat % 2`): 1 vs 1 hoy, 2 vs 2 sin cambiar el modelo.
+- **Sin flor** por decisión del usuario: `withFlor: true` lanza `FLOR_NOT_SUPPORTED`.
+- `docs/TRUCO_RULES.md` documenta la variante (incluido "mazo en primera paga el envido") y qué suite testea
+  cada regla. Las variantes que cambian el resultado de una partida se consultan al usuario antes de tocarlas.
+- `__tests__/simulation.js` juega partidas entre bots aleatorios con PRNG sembrado (`helpers.js#seededRng`);
+  sirve para verificar invariantes nuevos con `onStep`.
+
 ## Hitos
 
-M0–M2 hechos (scaffold, auth, billetera). Próximo: M3, motor de truco puro en `src/game/truco/`
-(sin I/O, `crypto.randomInt` para barajar, nunca `Math.random`), con `docs/TRUCO_RULES.md` y un test por regla.
-Las variantes de reglas que cambien el resultado de una partida se consultan al usuario.
+M0–M3 hechos (scaffold, auth, billetera, motor). Próximo: M4, sockets + lobby + salas + mesa mínima.
