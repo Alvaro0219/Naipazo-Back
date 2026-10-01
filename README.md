@@ -72,6 +72,30 @@ Login, registro y refresh devuelven `{ user, accessToken, refreshToken, dailyGra
 
 Un usuario puede estar en una sola sala activa a la vez (`ALREADY_IN_ROOM`).
 
+### Historial, ranking, perfil y admin (M6)
+
+| Método y ruta | Descripción |
+|---|---|
+| `GET /api/matches` | Mis partidas cerradas (paginado): resultado, rival, marcador, fichas netas. |
+| `GET /api/matches/:id` | Detalle mano por mano, solo para sus jugadores y solo si terminó. Incluye mis cartas, las jugadas y los eventos públicos; **nunca** las cartas que el rival no jugó. |
+| `GET /api/ranking` | `?by=won\|chips&period=all\|month\|week`. Excluye cuentas bloqueadas. |
+| `PATCH /api/users/me/password` | `{ currentPassword, newPassword }`. Cierra las otras sesiones y devuelve tokens nuevos. |
+| `GET /api/admin/users` | `?search=` por usuario o email (solo `admin`). |
+| `PATCH /api/admin/users/:id/status` | `{ isActive }`: bloquear/desbloquear (bloquear invalida sus refresh tokens). |
+| `POST /api/admin/users/:id/adjust` | `{ amount, reason, operationId }`: ajuste con asiento `ADMIN_ADJUST`, idempotente. |
+
+**Primer administrador:** registrar la cuenta normalmente y después
+
+```bash
+npm run make-admin -- <nombreDeUsuario>
+```
+
+(`-- <usuario> --revoke` le quita el rol). El usuario tiene que volver a iniciar sesión. En producción
+se corre una vez desde Railway (shell del servicio) o localmente con el `MONGO_URL` de Atlas.
+
+Limitación conocida: el access token no se consulta contra la base, así que una cuenta recién
+bloqueada (o un admin degradado) conserva su sesión actual hasta que vence (`JWT_EXPIRES_IN`).
+
 ### Socket.IO
 
 El cliente se conecta con `auth: { token: <accessToken> }` (mismo `CORS_ORIGINS` que Express).

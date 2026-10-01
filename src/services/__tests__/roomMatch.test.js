@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { getAvailableActions } from '../../game/truco/index.js';
 import { LedgerEntry } from '../../models/LedgerEntry.js';
 import { Match } from '../../models/Match.js';
 import { MatchHandLog } from '../../models/MatchHandLog.js';
@@ -10,65 +9,14 @@ import { setTestSink } from '../../sockets/emitter.js';
 import { computePayouts } from '../betService.js';
 import * as matchService from '../matchService.js';
 import * as roomService from '../roomService.js';
-import { claimDailyGrantIfDue, getLedgerSum } from '../walletService.js';
+import { getLedgerSum } from '../walletService.js';
 import { connectTestDb, disconnectTestDb, hasTestDb, resetTestDb } from './setupDb.js';
+import {
+  createUser, fakeSocket, playToEnd, sleep, startTable, waitFor
+} from './tableHelpers.js';
 
 const DEFAULT_SETTINGS = { ...matchService.settings };
-
-let seq = 0;
-async function createUser({ chips = false } = {}) {
-  seq += 1;
-  const doc = await User.create({
-    username: `mesa${seq}`, email: `mesa${seq}@test.com`, passwordHash: 'x', acceptedTermsAt: new Date()
-  });
-  if (chips) await claimDailyGrantIfDue(doc._id); // 1000 fichas
-  return { id: String(doc._id), username: doc.username };
-}
-
-/** Socket falso: guarda lo que se le emite directamente. */
-function fakeSocket(id) {
-  return { id, emitted: [], joined: [], emit(event, data) { this.emitted.push({ event, data }); }, join(room) { this.joined.push(room); } };
-}
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const balanceOf = async (userId) => (await User.findById(userId).lean()).balance;
-
-async function waitFor(predicate, { timeoutMs = 5000, stepMs = 10 } = {}) {
-  const start = Date.now();
-  while (!(await predicate())) {
-    if (Date.now() - start > timeoutMs) throw new Error('Tiempo de espera agotado');
-    await sleep(stepMs);
-  }
-}
-
-/** Crea una sala, la completa y conecta a los dos jugadores. */
-async function startTable({ bet = 0, targetPoints = 15, chips = bet > 0 } = {}) {
-  const host = await createUser({ chips });
-  const guest = await createUser({ chips });
-  const room = await roomService.createRoom(host, { uuid: randomUUID(), targetPoints, bet });
-  const { matchId } = await roomService.joinRoom(guest, room.id);
-  const sockets = { [host.id]: fakeSocket(`s-${host.id}`), [guest.id]: fakeSocket(`s-${guest.id}`) };
-  await matchService.attachSocket(matchId, host.id, sockets[host.id]);
-  await matchService.attachSocket(matchId, guest.id, sockets[guest.id]);
-  return { host, guest, room, matchId, sockets };
-}
-
-/** Juega con decisiones pseudoaleatorias hasta que la partida termina. */
-async function playToEnd(matchId, seed = 12345) {
-  let rng = seed;
-  const pick = (n) => { rng = (rng * 1103515245 + 12345) % 2147483648; return rng % n; };
-  for (let i = 0; i < 3000; i++) {
-    const rt = matchService.getRuntime(matchId);
-    if (rt.finished) return rt;
-    if (rt.finishing || rt.state.phase !== 'playing') { await sleep(5); continue; }
-    const actor = rt.state.players.find((p) => getAvailableActions(rt.state, p.id).length > 0);
-    const types = getAvailableActions(rt.state, actor.id).filter((t) => t !== 'GO_TO_DECK' || pick(8) === 0);
-    const type = types[pick(types.length)] || 'GO_TO_DECK';
-    const payload = type === 'PLAY_CARD' ? { cardId: rt.state.hand.cards[actor.id][0] } : {};
-    await matchService.handleAction(actor.id, { matchId, actionId: randomUUID(), type, payload });
-  }
-  throw new Error('La partida no terminó');
-}
 
 describe.skipIf(!hasTestDb)('salas y partidas (integración)', () => {
   let emissions;

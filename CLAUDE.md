@@ -12,6 +12,7 @@ que el documento del proyecto lista en su sección 3.2 (`socket.io`, `vitest`, `
 
 ```bash
 npm run dev                                      # API en :4000 con node --watch
+npm run make-admin -- <usuario> [--revoke]       # dar/quitar rol admin (vuelve a iniciar sesión)
 npm test                                         # vitest run (todos)
 npx vitest run src/utils/__tests__/dates.test.js # un archivo
 npx vitest run -t "no duplica el crédito"        # un test por nombre
@@ -97,5 +98,17 @@ Corren en serie (`fileParallelism: false`) contra Atlas, por eso tardan ~30 s.
 
 ## Hitos
 
-M0–M5 hechos (scaffold, auth, billetera, motor, salas + mesa, apuestas + timers + abandono).
-Próximo: M6 — historial, ranking, perfil (cambio de contraseña), admin mínimo y pulido mobile.
+M0–M6 hechos (scaffold, auth, billetera, motor, salas + mesa, apuestas + timers + abandono, historial +
+ranking + perfil + admin). Próximo: M7 — despliegue (Railway + Cloudflare Pages + Atlas, `deployment-guide.md`
+de la skill; una sola instancia del back).
+
+## Historial y privacidad
+
+- `MatchHandLog.publicEvents` guarda los eventos del motor que ya se emitieron a ambos jugadores; el
+  detalle de partida (`historyService.getMatchDetail`) arma la vista SOLO con eso + las cartas propias +
+  las jugadas. Las cartas no jugadas del rival nunca se exponen, ni con la partida terminada (revelarían
+  sus tantos: regla del usuario). `profileAdmin.test.js` lo verifica.
+- Errores que no son de sesión (ej. contraseña actual incorrecta) responden 400, nunca 401: el front
+  trata todo 401 como sesión vencida y refresca.
+- Los tests de integración comparten helpers en `src/services/__tests__/tableHelpers.js`
+  (`createUser`, `startTable`, `playToEnd`, `fakeSocket`, `waitFor`).

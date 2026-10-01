@@ -85,6 +85,7 @@ function dealHand(rt) {
     deck: state.hand.deck,
     dealt: state.hand.dealt,
     events: [],
+    publicEvents: [],
     startedAt: new Date()
   };
   publish(rt, events);
@@ -333,7 +334,10 @@ export function detachSocket(userId, socketId) {
 function publish(rt, events) {
   refreshTurnTimer(rt);
   // Los eventos del motor son públicos (cartas jugadas, cantos, tantos anunciados)
-  for (const event of events) emitter.toMatch(rt.matchId, 'game:event', event);
+  for (const event of events) {
+    emitter.toMatch(rt.matchId, 'game:event', event);
+    rt.handLog?.publicEvents.push(event);
+  }
   // El estado se envía proyectado a cada jugador por separado: nunca un broadcast del estado completo
   for (const p of rt.players) {
     const socketId = rt.sockets.get(p.id);
