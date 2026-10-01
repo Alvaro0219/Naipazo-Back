@@ -151,6 +151,28 @@ function resolveBaza(state, events) {
   hand.turnSeat = winnerPlayerId === null ? hand.manoSeat : findPlayer(state, winnerPlayerId).seat;
 }
 
+/**
+ * Canto de los tantos: empieza el mano y sigue en orden de asiento. Cada jugador solo canta sus tantos
+ * si su equipo va perdiendo y los supera (el empate lo gana el mano, que ya cantó); si no, dice
+ * "son buenas" y sus tantos no se revelan. Devuelve los tantos cantados (en orden) y el ganador.
+ */
+function announceTantos(state) {
+  const { hand } = state;
+  const n = state.players.length;
+  const tantos = {};
+  let best = null; // { team, value }
+
+  for (let k = 0; k < n; k++) {
+    const player = state.players[(hand.manoSeat + k) % n];
+    const value = computeTantos(hand.dealt[player.id]);
+    if (best === null || (player.team !== best.team && value > best.value)) {
+      tantos[player.id] = value;
+      best = { team: player.team, value };
+    }
+  }
+  return { tantos, winnerTeam: best.team };
+}
+
 function resolveEnvido(state, events, accepted) {
   const { hand } = state;
   const { pending } = hand;
@@ -159,15 +181,10 @@ function resolveEnvido(state, events, accepted) {
   let points;
 
   if (accepted) {
-    const tantos = {};
-    const bestByTeam = [-1, -1];
-    for (const p of state.players) {
-      tantos[p.id] = computeTantos(hand.dealt[p.id]);
-      bestByTeam[p.team] = Math.max(bestByTeam[p.team], tantos[p.id]);
-    }
-    // Empate de tantos: gana el mano
-    winnerTeam = bestByTeam[0] === bestByTeam[1] ? manoTeamOf(state) : (bestByTeam[0] > bestByTeam[1] ? 0 : 1);
+    const { tantos, winnerTeam: winner } = announceTantos(state);
+    winnerTeam = winner;
     points = envidoAcceptedPoints(calls, faltaEnvidoPoints(state.score, state.config.targetPoints));
+    // `tantos` solo trae los que se cantaron: los de quien dijo "son buenas" quedan ocultos
     hand.envido.result = { accepted: true, tantos, winnerTeam, points };
     events.push({ type: 'ENVIDO_RESULT', accepted: true, tantos, winnerTeam, points });
   } else {

@@ -1,11 +1,11 @@
 import { TRUCO_NAMES, getAvailableActions } from './engine.js';
-import { computeTantos } from './envido.js';
 import { RuleError } from './errors.js';
 import { scoreSection } from './scoring.js';
 
 /**
  * Lo que `playerId` puede ver de la partida: sus cartas, las cartas ya jugadas, el marcador,
- * los cantos y de quién es el turno. Nunca incluye las cartas del rival ni el mazo.
+ * los cantos y de quién es el turno. Nunca incluye las cartas del rival ni el mazo, y tampoco
+ * ayudas como el cálculo de los propios tantos: cada jugador los cuenta él mismo.
  */
 export function projectStateFor(state, playerId) {
   const me = state.players.find((p) => p.id === String(playerId));
@@ -41,7 +41,6 @@ function projectHand(state, hand, me) {
     dealerId: state.players[hand.dealerSeat].id,
     turnPlayerId: state.phase === 'playing' && !pending ? state.players[hand.turnSeat].id : null,
     myCards: [...hand.cards[me.id]],
-    myTantos: computeTantos(hand.dealt[me.id]),
     bazas: hand.bazas.map((b) => ({
       plays: b.plays.map((p) => ({ playerId: p.playerId, cardId: p.cardId })),
       winnerTeam: b.winnerTeam ?? null,
@@ -55,7 +54,7 @@ function projectHand(state, hand, me) {
     envido: {
       status: hand.envido.status,
       calls: [...hand.envido.calls],
-      // Los tantos solo se conocen si el envido se quiso (se anuncian a los dos)
+      // Solo los tantos que se cantaron (el que dijo "son buenas" no los revela)
       result: hand.envido.result ? structuredClone(hand.envido.result) : null
     },
     pending: pending

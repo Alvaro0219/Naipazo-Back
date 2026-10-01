@@ -62,7 +62,9 @@ cambiaron por consulta.
 | Secuencias: envido hasta dos veces, real envido una vez (después no se vuelve a envido), falta envido cierra la secuencia. | envido |
 | Querido: suma de lo cantado (envido 2, real envido 3). Con falta envido en la secuencia, vale la falta (reemplaza lo anterior) **[estándar]**. | envido |
 | No querido: quien cantó suma 1 si hubo un solo canto, o lo que valía lo cantado antes de la última subida. Ej.: envido-envido-real envido no querido = 4. | envido |
-| Se resuelve automáticamente: el servidor calcula y anuncia los tantos de ambos. Empate: gana el mano. | engine, views |
+| Se resuelve automáticamente en el servidor. Empate: gana el mano. | engine |
+| **Canto de los tantos [elegida]**: canta primero el mano. El pie solo revela sus tantos si lo supera; si no, dice "son buenas" y **sus tantos nunca se muestran** al rival. (En 2 vs 2 sigue el orden de asiento: solo canta quien supera al equipo que va ganando.) | engine, views |
+| **Sin ayudas**: la proyección no incluye el cálculo de los propios tantos; cada jugador los cuenta él mismo. | views |
 
 ### Falta envido
 
@@ -99,9 +101,10 @@ cambiaron por consulta.
 ## Proyección por jugador
 
 `projectStateFor(state, playerId)` es lo único que se envía a los clientes: incluye mis cartas, las
-cartas jugadas, el marcador, los cantos, de quién es el turno, mis tantos y `availableActions`. Nunca
-incluye las cartas no jugadas del rival, el mazo ni las cartas repartidas originales. Los tantos del
-rival solo aparecen si el envido se quiso. Verificado sobre partidas completas simuladas (`views`).
+cartas jugadas, el marcador, los cantos, de quién es el turno y `availableActions`. Nunca incluye las
+cartas no jugadas del rival, el mazo, las cartas repartidas originales ni el cálculo de tantos. De los
+tantos solo se ven los que se cantaron en un envido querido. Verificado sobre partidas completas
+simuladas (`views`).
 
 ## Pendiente / a decidir
 

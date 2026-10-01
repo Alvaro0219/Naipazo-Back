@@ -33,13 +33,20 @@ describe('projectStateFor', () => {
     expect(projectStateFor(state, B).hand.bazas[0].plays).toEqual([{ playerId: A, cardId: '4-oro' }]);
   });
 
-  it('solo veo mis tantos hasta que se quiere el envido', () => {
+  it('no da ayudas de tantos: ni los propios se calculan para el jugador', () => {
     const state = startMatch({ mano: MANO, pie: PIE });
-    expect(projectStateFor(state, A).hand.myTantos).toBe(33);
-    expect(JSON.stringify(projectStateFor(state, B))).not.toContain('33');
+    for (const id of [A, B]) {
+      const view = projectStateFor(state, id);
+      expect(view.hand).not.toHaveProperty('myTantos');
+      expect(JSON.stringify(view)).not.toMatch(/"(33|29)"|:33|:29/);
+    }
+  });
 
-    const { state: after } = run(state, [[A, 'CALL_ENVIDO'], [B, 'ACCEPT']]);
-    expect(projectStateFor(after, B).hand.envido.result.tantos).toEqual({ A: 33, B: 29 });
+  it('si gana el mano, el rival nunca ve los tantos del pie', () => {
+    const { state } = run(startMatch({ mano: MANO, pie: PIE }), [[A, 'CALL_ENVIDO'], [B, 'ACCEPT']]);
+    const viewA = projectStateFor(state, A);
+    expect(viewA.hand.envido.result.tantos).toEqual({ A: 33 });
+    expect(JSON.stringify(viewA)).not.toContain('29');
   });
 
   it('las acciones disponibles son solo las del jugador que puede actuar', () => {

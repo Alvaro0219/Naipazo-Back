@@ -160,19 +160,28 @@ describe('truco', () => {
 describe('envido', () => {
   const A33 = ['7-espada', '6-espada', '4-oro'];
 
-  it('querido: gana el de más tantos, se anuncian y el turno sigue', () => {
+  it('querido y gana el mano: el pie dice "son buenas" y sus tantos no se revelan', () => {
     const r = run(startMatch({ mano: A33, pie: ['5-copa', '4-copa', '1-oro'] }), [[A, 'CALL_ENVIDO'], [B, 'ACCEPT']]);
     expect(r.state.score).toEqual([2, 0]);
-    expect(r.events).toContainEqual(expect.objectContaining({
-      type: 'ENVIDO_RESULT', accepted: true, tantos: { A: 33, B: 29 }, winnerTeam: 0, points: 2
-    }));
+    const result = r.events.find((e) => e.type === 'ENVIDO_RESULT');
+    expect(result).toEqual({ type: 'ENVIDO_RESULT', accepted: true, tantos: { A: 33 }, winnerTeam: 0, points: 2 });
+    expect(JSON.stringify(r.state.hand.envido.result)).not.toContain('29');
     expect(r.state.hand.turnSeat).toBe(0);
     expect(r.state.hand.pending).toBeNull();
   });
 
-  it('empate de tantos: gana el mano', () => {
+  it('querido y gana el pie: canta el mano primero y después el pie, que lo supera', () => {
+    const r = run(startMatch({ mano: ['4-basto', '5-copa', '12-oro'], pie: A33 }), [[A, 'CALL_ENVIDO'], [B, 'ACCEPT']]);
+    expect(r.state.score).toEqual([0, 2]);
+    const result = r.events.find((e) => e.type === 'ENVIDO_RESULT');
+    expect(result.tantos).toEqual({ A: 5, B: 33 });
+    expect(Object.keys(result.tantos)).toEqual([A, B]); // en orden: primero el mano
+  });
+
+  it('empate de tantos: gana el mano y el pie no los revela', () => {
     const r = run(startMatch({ mano: A33, pie: ['7-copa', '6-copa', '4-basto'] }), [[A, 'CALL_ENVIDO'], [B, 'ACCEPT']]);
     expect(r.state.score).toEqual([2, 0]);
+    expect(r.state.hand.envido.result.tantos).toEqual({ A: 33 });
   });
 
   it('no querido después de subidas: suma lo aceptado antes de la última', () => {
