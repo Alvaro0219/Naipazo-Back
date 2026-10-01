@@ -59,6 +59,36 @@ termina si falta alguna obligatoria. `CORS_ORIGINS` aplica a Express y (desde M4
 
 Login, registro y refresh devuelven `{ user, accessToken, refreshToken, dailyGrant }`.
 
+### Salas (M4)
+
+| Método y ruta | Descripción |
+|---|---|
+| `GET /api/rooms` | Salas en espera, paginadas. Filtros `targetPoints`, `minBet`, `maxBet`. |
+| `GET /api/rooms/mine` | Sala en espera o en juego del usuario (o `null`). |
+| `POST /api/rooms` | `{ uuid, targetPoints: 15\|30, bet }`. Idempotente por `uuid`. Por ahora solo `bet: 0` (`BETS_NOT_AVAILABLE`). |
+| `POST /api/rooms/:id/join` | Ocupa el asiento y arranca la partida (transacción). |
+| `DELETE /api/rooms/:id` | Cancela una sala propia en espera. |
+
+Un usuario puede estar en una sola sala activa a la vez (`ALREADY_IN_ROOM`).
+
+### Socket.IO
+
+El cliente se conecta con `auth: { token: <accessToken> }` (mismo `CORS_ORIGINS` que Express).
+
+| Cliente → servidor | Servidor → cliente |
+|---|---|
+| `lobby:subscribe` / `lobby:unsubscribe` | `lobby:rooms` (lista completa de salas en espera) |
+| `room:join { roomId }` — entrar o volver a la mesa | `room:update`, `game:state` (proyectado por jugador) |
+| `room:leave { roomId }` — cancelar la propia sala en espera | `game:event` (cartas jugadas, cantos, resultados) |
+| `game:action { matchId, actionId, type, payload }` | `game:error { code, message }`, `game:finished` |
+| | `player:disconnected` / `player:reconnected`, `wallet:update` |
+
+Una sola conexión de juego por jugador: si abre la mesa en otra pestaña, la anterior recibe
+`game:error SESSION_REPLACED`.
+
+**Reinicio del servidor:** las partidas en juego viven en memoria; al arrancar, las que quedaron
+`playing` se **cancelan** (y desde M5 se reembolsan sus apuestas).
+
 ## Fichas: decisiones de diseño
 
 - **`walletService` es el único punto que modifica `User.balance`.** Cada movimiento corre en una

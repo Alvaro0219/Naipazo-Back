@@ -71,6 +71,28 @@ Corren en serie (`fileParallelism: false`) contra Atlas, por eso tardan ~30 s.
 - `__tests__/simulation.js` juega partidas entre bots aleatorios con PRNG sembrado (`helpers.js#seededRng`);
   sirve para verificar invariantes nuevos con `onStep`.
 
+## Tiempo real (salas y partidas)
+
+- `routes/rooms.routes.js` (REST) crea/une/cancela salas; `sockets/` cumple el rol de controllers del tiempo
+  real (validan con Joi vía `validateSocketPayload` y delegan). Todo error de socket sale por
+  `safeHandler` como `game:error { code, message }` solo a ese socket.
+- `roomService.joinRoom` ocupa el asiento y crea el `Match` en **una transacción** (ahí van a ir los
+  `lockBet` de M5) y recién después llama a `matchService.startMatch`.
+- `matchService` guarda las partidas activas en un `Map` en memoria (una sola instancia). El motor es
+  síncrono: el estado se actualiza antes de cualquier `await`, así que no hay carreras entre acciones.
+  Persiste un `MatchHandLog` por mano y al terminar actualiza `Match`, `Room` y `User.stats`.
+  Al arrancar el server, `cancelInterruptedMatches` cancela las partidas que quedaron `playing`.
+- **Nunca** emitir el estado completo: `publish` manda `game:event` (públicos) a la room `match:{id}` y
+  `game:state` proyectado a cada socket por separado. Los services emiten solo vía `sockets/emitter.js`
+  (`setTestSink` captura emisiones en tests; `roomMatch.test.js` revisa que ninguna filtre cartas).
+- Una conexión de juego por jugador (`rt.sockets`): la nueva reemplaza a la anterior (`SESSION_REPLACED`).
+- `matchService.settings.nextHandDelayMs` es la pausa entre manos (0 en tests).
+- Para probar con dos jugadores en una máquina: segundo navegador en `http://p2.localhost:5173`
+  (ya está en `CORS_ORIGINS` del `.env` de desarrollo). Credenciales de prueba en `test-users.local.md`.
+
 ## Hitos
 
-M0–M3 hechos (scaffold, auth, billetera, motor). Próximo: M4, sockets + lobby + salas + mesa mínima.
+M0–M4 hechos (scaffold, auth, billetera, motor, salas + mesa gratis). Próximo: M5 — apuestas con ledger
+(`BETS_NOT_AVAILABLE` marca dónde habilitarlas), timers de turno (`applyTimeout`), gracia de reconexión y
+abandono (`forfeitMatch`; hoy `player:disconnected` sale con `graceSeconds: null`), reembolso en
+`cancelInterruptedMatches`.

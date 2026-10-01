@@ -2,6 +2,9 @@ import mongoose from 'mongoose';
 import { connectDb } from '../../config/db.js';
 import { env } from '../../config/env.js';
 import { LedgerEntry } from '../../models/LedgerEntry.js';
+import { Match } from '../../models/Match.js';
+import { MatchHandLog } from '../../models/MatchHandLog.js';
+import { Room } from '../../models/Room.js';
 import { User } from '../../models/User.js';
 
 // Los tests de integración necesitan un MongoDB con replica set (transacciones).
@@ -15,7 +18,7 @@ export async function connectTestDb() {
 export async function resetTestDb() {
   await mongoose.connection.db.dropDatabase();
   // Los índices únicos tienen que existir antes de los tests de concurrencia
-  await Promise.all([User.syncIndexes(), LedgerEntry.syncIndexes()]);
+  await Promise.all([User, LedgerEntry, Room, Match, MatchHandLog].map((model) => model.syncIndexes()));
 }
 
 export async function disconnectTestDb() {

@@ -8,6 +8,8 @@ import { connectDb } from './config/db.js';
 import { env } from './config/env.js';
 import { globalApiLimiter } from './middlewares/rateLimit.js';
 import apiRoutes from './routes/index.js';
+import { cancelInterruptedMatches } from './services/matchService.js';
+import { initSockets } from './sockets/index.js';
 import { AppError } from './utils/AppError.js';
 import { fail } from './utils/response.js';
 
@@ -69,8 +71,12 @@ export async function startServer() {
     process.exit(1);
   }
 
-  // Servidor HTTP explícito: Socket.IO (hito M4) se monta sobre esta misma instancia
+  // Las partidas en memoria no sobreviven a un reinicio: se cancelan las que quedaron en juego
+  await cancelInterruptedMatches();
+
+  // Socket.IO se monta sobre el mismo servidor HTTP
   const server = http.createServer(app);
+  initSockets(server);
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       console.error(`El puerto ${env.port} ya está en uso: cerrá el otro proceso o cambiá PORT en .env`);

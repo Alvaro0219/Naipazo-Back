@@ -22,6 +22,13 @@ export const authLimiter = buildLimiter({
   message: 'Demasiados intentos. Esperá unos minutos antes de volver a intentar.'
 });
 
+// Crear / unirse a salas
+export const roomLimiter = buildLimiter({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: 'Demasiadas operaciones con salas. Esperá un momento.'
+});
+
 // Chequeo de disponibilidad en vivo del formulario de registro (se dispara mientras se tipea)
 export const availabilityLimiter = buildLimiter({
   windowMs: 60 * 1000,
