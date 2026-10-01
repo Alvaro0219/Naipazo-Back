@@ -8,6 +8,10 @@ export const roomRefSchema = Joi.object({
   roomId: objectId.required().label('La sala')
 });
 
+export const matchRefSchema = Joi.object({
+  matchId: objectId.required().label('La partida')
+});
+
 export const gameActionSchema = Joi.object({
   matchId: objectId.required().label('La partida'),
   actionId: Joi.string().guid().required().label('El identificador de la acción'),

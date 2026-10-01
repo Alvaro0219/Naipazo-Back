@@ -76,8 +76,13 @@ Corren en serie (`fileParallelism: false`) contra Atlas, por eso tardan ~30 s.
 - `routes/rooms.routes.js` (REST) crea/une/cancela salas; `sockets/` cumple el rol de controllers del tiempo
   real (validan con Joi vía `validateSocketPayload` y delegan). Todo error de socket sale por
   `safeHandler` como `game:error { code, message }` solo a ese socket.
-- `roomService.joinRoom` ocupa el asiento y crea el `Match` en **una transacción** (ahí van a ir los
-  `lockBet` de M5) y recién después llama a `matchService.startMatch`.
+- `roomService.joinRoom` ocupa el asiento, crea el `Match` y hace los `lockBet` de ambos en **una
+  transacción**, y recién después llama a `matchService.startMatch`.
+- Pagos y reembolsos de apuestas: solo `services/betService.js` (`settleMatchBets`, idempotente; marca
+  `Match.betsSettled`). `matchService.recoverOnStartup` cancela partidas `playing` y liquida pendientes.
+- Timers en `matchService` (`settings.turnTimeoutMs`, `reconnectGraceMs`, `nextHandDelayMs`, ajustables
+  en tests): el de turno se recalcula en cada `publish` y se pausa si quien actúa está desconectado;
+  la gracia arranca en `detachSocket` (y al crear la partida) y termina en `endByAbandon`.
 - `matchService` guarda las partidas activas en un `Map` en memoria (una sola instancia). El motor es
   síncrono: el estado se actualiza antes de cualquier `await`, así que no hay carreras entre acciones.
   Persiste un `MatchHandLog` por mano y al terminar actualiza `Match`, `Room` y `User.stats`.
@@ -92,7 +97,5 @@ Corren en serie (`fileParallelism: false`) contra Atlas, por eso tardan ~30 s.
 
 ## Hitos
 
-M0–M4 hechos (scaffold, auth, billetera, motor, salas + mesa gratis). Próximo: M5 — apuestas con ledger
-(`BETS_NOT_AVAILABLE` marca dónde habilitarlas), timers de turno (`applyTimeout`), gracia de reconexión y
-abandono (`forfeitMatch`; hoy `player:disconnected` sale con `graceSeconds: null`), reembolso en
-`cancelInterruptedMatches`.
+M0–M5 hechos (scaffold, auth, billetera, motor, salas + mesa, apuestas + timers + abandono).
+Próximo: M6 — historial, ranking, perfil (cambio de contraseña), admin mínimo y pulido mobile.

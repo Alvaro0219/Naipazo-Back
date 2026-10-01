@@ -4,7 +4,9 @@ import { ACTIVE_ROOM_STATUSES, Room } from '../models/Room.js';
 import * as emitter from '../sockets/emitter.js';
 import { AppError } from '../utils/AppError.js';
 import { runInTransaction } from '../utils/transaction.js';
+import { notifyBalances } from './betService.js';
 import * as matchService from './matchService.js';
+import { getBalance, lockBet } from './walletService.js';
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sin 0/O ni 1/I para que se lea bien
 const CODE_LENGTH = 6;
@@ -65,11 +67,11 @@ export async function createRoom(user, { uuid, targetPoints, bet }) {
   const existing = await Room.findOne({ uuid, hostId: user.id }).lean();
   if (existing) return toPublicRoom(existing);
 
-  if (bet > 0) {
-    // M5: verificar saldo del host (sin bloquear) y habilitar las mesas con apuesta
-    throw new AppError('Las mesas con apuesta llegan muy pronto. Por ahora solo hay mesas gratis.', 400, 'BETS_NOT_AVAILABLE');
-  }
   await assertNoActiveRoom(user.id);
+  // Con apuesta: solo se verifica el saldo; las fichas se bloquean cuando se completa la mesa
+  if (bet > 0 && (await getBalance(user.id)) < bet) {
+    throw new AppError('No tenés fichas suficientes para esa apuesta', 400, 'INSUFFICIENT_BALANCE');
+  }
 
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
@@ -107,9 +109,13 @@ export async function joinRoom(user, roomId) {
     throw new AppError('La sala ya no está disponible', 409, 'ROOM_NOT_AVAILABLE');
   }
   await assertNoActiveRoom(user.id);
+  const bet = current.config.bet || 0;
+  if (bet > 0 && (await getBalance(user.id)) < bet) {
+    throw new AppError('No tenés fichas suficientes para esta mesa', 400, 'INSUFFICIENT_BALANCE');
+  }
 
-  // Ocupar el asiento y crear la partida en una sola transacción.
-  // M5: acá mismo se bloquean las apuestas de ambos con walletService.lockBet(..., { session }).
+  // Ocupar el asiento, crear la partida y bloquear las apuestas de ambos en UNA transacción:
+  // si falla cualquier paso (por ejemplo, el saldo de alguno), no se bloquea nada.
   const { room, match } = await runInTransaction(async (session) => {
     const updated = await Room.findOneAndUpdate(
       { _id: roomId, status: 'waiting', 'seats.1': { $exists: false }, 'seats.userId': { $ne: user.id } },
@@ -126,11 +132,25 @@ export async function joinRoom(user, roomId) {
         bet: updated.config.bet
       },
       players: updated.seats.map((s, seat) => ({
-        userId: s.userId, username: s.username, seat, team: seat % 2, betLocked: 0
+        userId: s.userId, username: s.username, seat, team: seat % 2, betLocked: updated.config.bet
       })),
       status: 'playing',
+      betsSettled: !(updated.config.bet > 0),
       startedAt: new Date()
     }], { session });
+
+    if (updated.config.bet > 0) {
+      for (const seat of updated.seats) {
+        try {
+          await lockBet(created._id, seat.userId, updated.config.bet, { session });
+        } catch (err) {
+          if (err?.code !== 'INSUFFICIENT_BALANCE') throw err;
+          throw String(seat.userId) === user.id
+            ? new AppError('No tenés fichas suficientes para esta mesa', 400, 'INSUFFICIENT_BALANCE')
+            : new AppError('El anfitrión ya no tiene fichas suficientes para esta mesa', 409, 'HOST_INSUFFICIENT_BALANCE');
+        }
+      }
+    }
 
     updated.matchId = created._id;
     await updated.save({ session });
@@ -140,6 +160,7 @@ export async function joinRoom(user, roomId) {
   matchService.startMatch({ room, match });
   notifyRoom(room);
   await notifyLobby();
+  if (room.config.bet > 0) await notifyBalances(room.seats.map((s) => s.userId));
   return toPublicRoom(room);
 }
 

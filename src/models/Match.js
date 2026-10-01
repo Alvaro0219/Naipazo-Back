@@ -22,6 +22,9 @@ const MatchSchema = new mongoose.Schema({
   handsPlayed: { type: Number, default: 0 },
   winnerTeam: { type: Number, enum: [0, 1, null], default: null },
   endReason: { type: String, enum: ['normal', 'abandon', 'timeout', 'cancelled', null], default: null },
+  abandonedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  // false mientras haya apuestas bloqueadas sin pagar ni devolver (se reintenta al arrancar el server)
+  betsSettled: { type: Boolean, default: true, index: true },
   startedAt: { type: Date, required: true },
   endedAt: { type: Date, default: null }
 }, { timestamps: true });

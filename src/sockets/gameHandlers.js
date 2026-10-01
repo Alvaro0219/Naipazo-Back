@@ -1,4 +1,4 @@
-import { gameActionSchema, validateSocketPayload } from '../schemas/socket.schemas.js';
+import { gameActionSchema, matchRefSchema, validateSocketPayload } from '../schemas/socket.schemas.js';
 import * as matchService from '../services/matchService.js';
 import { AppError } from '../utils/AppError.js';
 import { createSocketLimiter, safeHandler } from './safeHandler.js';
@@ -11,5 +11,11 @@ export function registerGameHandlers(socket) {
     if (!allow()) throw new AppError('Estás enviando acciones demasiado rápido', 429, 'RATE_LIMITED');
     const action = validateSocketPayload(gameActionSchema, payload);
     await matchService.handleAction(socket.user.id, action);
+  }));
+
+  // Abandonar la partida en curso: es una derrota (y se pierde la apuesta)
+  socket.on('game:abandon', safeHandler(socket, async (payload) => {
+    const { matchId } = validateSocketPayload(matchRefSchema, payload);
+    await matchService.abandonMatch(socket.user.id, matchId);
   }));
 }

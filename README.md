@@ -65,8 +65,9 @@ Login, registro y refresh devuelven `{ user, accessToken, refreshToken, dailyGra
 |---|---|
 | `GET /api/rooms` | Salas en espera, paginadas. Filtros `targetPoints`, `minBet`, `maxBet`. |
 | `GET /api/rooms/mine` | Sala en espera o en juego del usuario (o `null`). |
-| `POST /api/rooms` | `{ uuid, targetPoints: 15\|30, bet }`. Idempotente por `uuid`. Por ahora solo `bet: 0` (`BETS_NOT_AVAILABLE`). |
-| `POST /api/rooms/:id/join` | Ocupa el asiento y arranca la partida (transacción). |
+| `POST /api/rooms` | `{ uuid, targetPoints: 15\|30, bet }`. Idempotente por `uuid`. `bet` 0 (gratis) o entre `MIN_BET` y `MAX_BET`; verifica el saldo sin bloquearlo. |
+| `POST /api/rooms/:id/join` | Ocupa el asiento, crea la partida y bloquea las apuestas de ambos en una transacción. |
+| `GET /api/config` | Parámetros públicos: apuesta mínima/máxima, comisión, tiempos. |
 | `DELETE /api/rooms/:id` | Cancela una sala propia en espera. |
 
 Un usuario puede estar en una sola sala activa a la vez (`ALREADY_IN_ROOM`).
@@ -80,14 +81,27 @@ El cliente se conecta con `auth: { token: <accessToken> }` (mismo `CORS_ORIGINS`
 | `lobby:subscribe` / `lobby:unsubscribe` | `lobby:rooms` (lista completa de salas en espera) |
 | `room:join { roomId }` — entrar o volver a la mesa | `room:update`, `game:state` (proyectado por jugador) |
 | `room:leave { roomId }` — cancelar la propia sala en espera | `game:event` (cartas jugadas, cantos, resultados) |
-| `game:action { matchId, actionId, type, payload }` | `game:error { code, message }`, `game:finished` |
-| | `player:disconnected` / `player:reconnected`, `wallet:update` |
+| `game:action { matchId, actionId, type, payload }` | `game:error { code, message }`, `game:finished` (con `chips`) |
+| `game:abandon { matchId }` — abandonar (derrota) | `player:disconnected { graceSeconds }` / `player:reconnected`, `wallet:update` |
+
+`game:state` incluye además `turn { playerIds, remainingMs, totalMs }` y `disconnected { userId: { remainingMs } }`
+(se mandan milisegundos restantes, no horas, para no depender del reloj del cliente).
 
 Una sola conexión de juego por jugador: si abre la mesa en otra pestaña, la anterior recibe
 `game:error SESSION_REPLACED`.
 
-**Reinicio del servidor:** las partidas en juego viven en memoria; al arrancar, las que quedaron
-`playing` se **cancelan** (y desde M5 se reembolsan sus apuestas).
+### Apuestas, tiempos y abandono (M5)
+
+- Las apuestas se bloquean al completarse la mesa (`BET_LOCK`) y al terminar el ganador cobra el pozo
+  menos `HOUSE_RATE` (`BET_PAYOUT`). La liquidación vive en `betService` y es idempotente; si el server
+  se cae a mitad de camino, `Match.betsSettled=false` y se completa al arrancar.
+- **Turno:** `TURN_TIMEOUT_SECONDS` por decisión. Al vencer: con un canto pendiente es "no quiero"; si
+  había que jugar, se pierde la mano. El timer se pausa si quien debe actuar está desconectado.
+- **Desconexión:** `RECONNECT_GRACE_SECONDS` para volver (también corre desde que arranca la partida
+  hasta que cada jugador abre la mesa). Si no vuelve, pierde por abandono y el rival cobra.
+- **Abandono voluntario** (`game:abandon`): derrota inmediata; suma `stats.abandoned`.
+- **Reinicio del servidor:** las partidas en juego viven en memoria; al arrancar, las que quedaron
+  `playing` se **cancelan y se devuelven sus apuestas** (`BET_REFUND`).
 
 ## Fichas: decisiones de diseño
 

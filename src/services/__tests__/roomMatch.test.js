@@ -1,21 +1,27 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { getAvailableActions } from '../../game/truco/index.js';
+import { LedgerEntry } from '../../models/LedgerEntry.js';
 import { Match } from '../../models/Match.js';
 import { MatchHandLog } from '../../models/MatchHandLog.js';
 import { Room } from '../../models/Room.js';
 import { User } from '../../models/User.js';
 import { setTestSink } from '../../sockets/emitter.js';
+import { computePayouts } from '../betService.js';
 import * as matchService from '../matchService.js';
 import * as roomService from '../roomService.js';
+import { claimDailyGrantIfDue, getLedgerSum } from '../walletService.js';
 import { connectTestDb, disconnectTestDb, hasTestDb, resetTestDb } from './setupDb.js';
 
+const DEFAULT_SETTINGS = { ...matchService.settings };
+
 let seq = 0;
-async function createUser() {
+async function createUser({ chips = false } = {}) {
   seq += 1;
   const doc = await User.create({
     username: `mesa${seq}`, email: `mesa${seq}@test.com`, passwordHash: 'x', acceptedTermsAt: new Date()
   });
+  if (chips) await claimDailyGrantIfDue(doc._id); // 1000 fichas
   return { id: String(doc._id), username: doc.username };
 }
 
@@ -25,17 +31,53 @@ function fakeSocket(id) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const balanceOf = async (userId) => (await User.findById(userId).lean()).balance;
+
+async function waitFor(predicate, { timeoutMs = 5000, stepMs = 10 } = {}) {
+  const start = Date.now();
+  while (!(await predicate())) {
+    if (Date.now() - start > timeoutMs) throw new Error('Tiempo de espera agotado');
+    await sleep(stepMs);
+  }
+}
+
+/** Crea una sala, la completa y conecta a los dos jugadores. */
+async function startTable({ bet = 0, targetPoints = 15, chips = bet > 0 } = {}) {
+  const host = await createUser({ chips });
+  const guest = await createUser({ chips });
+  const room = await roomService.createRoom(host, { uuid: randomUUID(), targetPoints, bet });
+  const { matchId } = await roomService.joinRoom(guest, room.id);
+  const sockets = { [host.id]: fakeSocket(`s-${host.id}`), [guest.id]: fakeSocket(`s-${guest.id}`) };
+  await matchService.attachSocket(matchId, host.id, sockets[host.id]);
+  await matchService.attachSocket(matchId, guest.id, sockets[guest.id]);
+  return { host, guest, room, matchId, sockets };
+}
+
+/** Juega con decisiones pseudoaleatorias hasta que la partida termina. */
+async function playToEnd(matchId, seed = 12345) {
+  let rng = seed;
+  const pick = (n) => { rng = (rng * 1103515245 + 12345) % 2147483648; return rng % n; };
+  for (let i = 0; i < 3000; i++) {
+    const rt = matchService.getRuntime(matchId);
+    if (rt.finished) return rt;
+    if (rt.finishing || rt.state.phase !== 'playing') { await sleep(5); continue; }
+    const actor = rt.state.players.find((p) => getAvailableActions(rt.state, p.id).length > 0);
+    const types = getAvailableActions(rt.state, actor.id).filter((t) => t !== 'GO_TO_DECK' || pick(8) === 0);
+    const type = types[pick(types.length)] || 'GO_TO_DECK';
+    const payload = type === 'PLAY_CARD' ? { cardId: rt.state.hand.cards[actor.id][0] } : {};
+    await matchService.handleAction(actor.id, { matchId, actionId: randomUUID(), type, payload });
+  }
+  throw new Error('La partida no terminó');
+}
 
 describe.skipIf(!hasTestDb)('salas y partidas (integración)', () => {
   let emissions;
 
-  beforeAll(async () => {
-    await connectTestDb();
-    matchService.settings.nextHandDelayMs = 0;
-  });
+  beforeAll(connectTestDb);
   afterAll(disconnectTestDb);
   beforeEach(async () => {
     await resetTestDb();
+    Object.assign(matchService.settings, DEFAULT_SETTINGS, { nextHandDelayMs: 0 });
     emissions = [];
     setTestSink((e) => emissions.push(e));
   });
@@ -56,10 +98,8 @@ describe.skipIf(!hasTestDb)('salas y partidas (integración)', () => {
       expect(emissions.find((e) => e.event === 'lobby:rooms').data.map((r) => r.id)).toEqual([a.id]);
     });
 
-    it('no permite apuestas todavía ni dos salas activas por usuario', async () => {
+    it('una sola sala activa por usuario', async () => {
       const host = await createUser();
-      await expect(roomService.createRoom(host, { uuid: randomUUID(), targetPoints: 15, bet: 100 }))
-        .rejects.toMatchObject({ code: 'BETS_NOT_AVAILABLE' });
       await roomService.createRoom(host, { uuid: randomUUID(), targetPoints: 15, bet: 0 });
       await expect(roomService.createRoom(host, { uuid: randomUUID(), targetPoints: 30, bet: 0 }))
         .rejects.toMatchObject({ code: 'ALREADY_IN_ROOM' });
@@ -81,7 +121,6 @@ describe.skipIf(!hasTestDb)('salas y partidas (integración)', () => {
 
       await expect(roomService.joinRoom(third, room.id)).rejects.toMatchObject({ code: 'ROOM_NOT_AVAILABLE' });
       await expect(roomService.cancelRoom(host, room.id)).rejects.toMatchObject({ code: 'ROOM_NOT_CANCELLABLE' });
-      // Ambos jugadores reciben room:update
       const updates = emissions.filter((e) => e.event === 'room:update').map((e) => e.target);
       expect(updates).toEqual(expect.arrayContaining([`user:${host.id}`, `user:${guest.id}`]));
     });
@@ -103,12 +142,145 @@ describe.skipIf(!hasTestDb)('salas y partidas (integración)', () => {
     });
   });
 
+  describe('apuestas', () => {
+    it('crear con apuesta verifica el saldo sin bloquear', async () => {
+      const poor = await createUser();
+      await expect(roomService.createRoom(poor, { uuid: randomUUID(), targetPoints: 15, bet: 100 }))
+        .rejects.toMatchObject({ code: 'INSUFFICIENT_BALANCE' });
+
+      const host = await createUser({ chips: true });
+      await roomService.createRoom(host, { uuid: randomUUID(), targetPoints: 15, bet: 300 });
+      expect(await balanceOf(host.id)).toBe(1000);
+    });
+
+    it('si el que se une no tiene saldo, no se bloquea nada y la sala sigue esperando', async () => {
+      const host = await createUser({ chips: true });
+      const poor = await createUser();
+      const room = await roomService.createRoom(host, { uuid: randomUUID(), targetPoints: 15, bet: 300 });
+      await expect(roomService.joinRoom(poor, room.id)).rejects.toMatchObject({ code: 'INSUFFICIENT_BALANCE' });
+      expect((await Room.findById(room.id).lean()).status).toBe('waiting');
+      expect(await LedgerEntry.countDocuments({ type: 'BET_LOCK' })).toBe(0);
+      expect(await Match.countDocuments()).toBe(0);
+    });
+
+    it('al empezar se bloquean ambas apuestas y al terminar el ganador cobra el pozo', async () => {
+      const { host, guest, matchId } = await startTable({ bet: 300 });
+      expect(await balanceOf(host.id)).toBe(700);
+      expect(await balanceOf(guest.id)).toBe(700);
+      expect(emissions.filter((e) => e.event === 'wallet:update')).toHaveLength(2);
+
+      await playToEnd(matchId);
+      const match = await Match.findById(matchId).lean();
+      const winnerId = String(match.players.find((p) => p.team === match.winnerTeam).userId);
+      const loserId = winnerId === host.id ? guest.id : host.id;
+
+      expect(match.betsSettled).toBe(true);
+      expect(await balanceOf(winnerId)).toBe(1300);
+      expect(await balanceOf(loserId)).toBe(700);
+      for (const id of [winnerId, loserId]) expect(await getLedgerSum(id)).toBe(await balanceOf(id));
+      expect((await User.findById(winnerId).lean()).stats.chipsWon).toBe(300);
+
+      const finished = emissions.find((e) => e.event === 'game:finished');
+      expect(finished.data.chips).toMatchObject({ bet: 300, pot: 600 });
+      expect(finished.data.chips.players.find((p) => p.userId === winnerId)).toMatchObject({ received: 600, net: 300 });
+      expect(finished.data.chips.players.find((p) => p.userId === loserId)).toMatchObject({ received: 0, net: -300 });
+    }, 60000);
+
+    it('la comisión de la casa se descuenta del pozo', () => {
+      const players = [{ userId: 'a', team: 0, betLocked: 500 }, { userId: 'b', team: 1, betLocked: 500 }];
+      expect(computePayouts({ players, winnerTeam: 1 }, 0)).toEqual([{ userId: 'b', amount: 1000 }]);
+      expect(computePayouts({ players, winnerTeam: 1 }, 0.05)).toEqual([{ userId: 'b', amount: 950 }]);
+    });
+
+    it('al reiniciar, las partidas en juego se cancelan y se devuelven las apuestas', async () => {
+      const { host, guest, room, matchId } = await startTable({ bet: 250 });
+      matchService.clearRuntimes();
+
+      expect(await matchService.recoverOnStartup()).toEqual({ cancelled: 1, settled: 1 });
+      expect((await Match.findById(matchId).lean())).toMatchObject({ status: 'cancelled', betsSettled: true });
+      expect((await Room.findById(room.id).lean()).status).toBe('cancelled');
+      expect(await balanceOf(host.id)).toBe(1000);
+      expect(await balanceOf(guest.id)).toBe(1000);
+      expect(await LedgerEntry.countDocuments({ type: 'BET_REFUND' })).toBe(2);
+      // Repetir no devuelve dos veces
+      await matchService.recoverOnStartup();
+      expect(await balanceOf(host.id)).toBe(1000);
+    });
+  });
+
+  describe('abandono, desconexión y tiempos', () => {
+    it('abandonar es derrota: el rival cobra y queda registrado', async () => {
+      const { host, guest, matchId } = await startTable({ bet: 200 });
+      await matchService.abandonMatch(host.id, matchId);
+
+      const match = await Match.findById(matchId).lean();
+      expect(match).toMatchObject({ status: 'finished', endReason: 'abandon', winnerTeam: 1 });
+      expect(String(match.abandonedBy)).toBe(host.id);
+      expect(await balanceOf(guest.id)).toBe(1200);
+      expect(await balanceOf(host.id)).toBe(800);
+      expect((await User.findById(host.id).lean()).stats).toMatchObject({ played: 1, lost: 1, abandoned: 1 });
+      await expect(matchService.abandonMatch(guest.id, matchId)).rejects.toMatchObject({ code: 'MATCH_NOT_ACTIVE' });
+    });
+
+    it('si no vuelve dentro de la gracia, pierde por abandono', async () => {
+      matchService.settings.reconnectGraceMs = 80;
+      const { host, guest, matchId, sockets } = await startTable();
+
+      matchService.detachSocket(guest.id, sockets[guest.id].id);
+      expect(emissions).toContainEqual(expect.objectContaining({
+        event: 'player:disconnected', data: { playerId: guest.id, graceSeconds: 0 }
+      }));
+      await waitFor(() => matchService.getRuntime(matchId).finished);
+      const match = await Match.findById(matchId).lean();
+      expect(match).toMatchObject({ endReason: 'abandon', winnerTeam: 0 });
+      expect(String(match.abandonedBy)).toBe(guest.id);
+      expect(host.id).toBeTruthy();
+    });
+
+    it('si vuelve a tiempo, sigue la partida y el rival recibe el aviso', async () => {
+      matchService.settings.reconnectGraceMs = 200;
+      const { guest, matchId, sockets } = await startTable();
+      matchService.detachSocket(guest.id, sockets[guest.id].id);
+      const viewWhileAway = matchService.buildStateFor(matchService.getRuntime(matchId), guest.id);
+      expect(viewWhileAway.disconnected[guest.id].remainingMs).toBeGreaterThan(0);
+
+      await matchService.attachSocket(matchId, guest.id, fakeSocket('vuelve'));
+      expect(emissions).toContainEqual(expect.objectContaining({ event: 'player:reconnected', data: { playerId: guest.id } }));
+      await sleep(300);
+      expect(matchService.getRuntime(matchId).finished).toBe(false);
+    });
+
+    it('vence el tiempo de turno: se resuelve solo y sigue el juego', async () => {
+      matchService.settings.turnTimeoutMs = 60;
+      const { matchId } = await startTable();
+      const rt = matchService.getRuntime(matchId);
+      expect(matchService.buildStateFor(rt, rt.players[0].id).turn.remainingMs).toBeGreaterThan(0);
+
+      await waitFor(() => rt.state.score.some((s) => s > 0));
+      expect(emissions).toContainEqual(expect.objectContaining({
+        event: 'game:event', data: expect.objectContaining({ type: 'TURN_TIMEOUT' })
+      }));
+    });
+
+    it('el turno no corre mientras quien debe jugar está desconectado', async () => {
+      matchService.settings.turnTimeoutMs = 40;
+      matchService.settings.reconnectGraceMs = 10000;
+      const { matchId, sockets } = await startTable();
+      const rt = matchService.getRuntime(matchId);
+      const actor = rt.state.players[rt.state.hand.turnSeat].id;
+
+      matchService.detachSocket(actor, sockets[actor].id);
+      expect(rt.turn).toBeNull();
+      await sleep(120);
+      expect(rt.state.score).toEqual([0, 0]);
+    });
+  });
+
   describe('partida completa', () => {
     it('se juega hasta el final sin filtrar cartas, y queda registrada', async () => {
       const [host, guest] = [await createUser(), await createUser()];
       const room = await roomService.createRoom(host, { uuid: randomUUID(), targetPoints: 15, bet: 0 });
       const { matchId } = await roomService.joinRoom(guest, room.id);
-      const sockets = { [host.id]: fakeSocket('s-host'), [guest.id]: fakeSocket('s-guest') };
       const socketOwner = { 's-host': host.id, 's-guest': guest.id };
 
       // Cada emisión se revisa en el momento: no puede contener cartas que el destinatario no debe ver
@@ -125,26 +297,13 @@ describe.skipIf(!hasTestDb)('salas y partidas (integración)', () => {
         for (const card of forbidden) if (json.includes(`"${card}"`)) leaks.push({ event: e.event, card });
       });
 
-      await matchService.attachSocket(matchId, host.id, sockets[host.id]);
-      await matchService.attachSocket(matchId, guest.id, sockets[guest.id]);
-      expect(sockets[host.id].emitted[0].event).toBe('game:state');
-      expect(sockets[host.id].emitted[0].data.hand.myCards).toHaveLength(3);
+      const hostSocket = fakeSocket('s-host');
+      await matchService.attachSocket(matchId, host.id, hostSocket);
+      await matchService.attachSocket(matchId, guest.id, fakeSocket('s-guest'));
+      const firstState = emissions.find((e) => e.target === 's-host' && e.event === 'game:state');
+      expect(firstState.data.hand.myCards).toHaveLength(3);
 
-      let rng = 12345;
-      const pick = (n) => { rng = (rng * 1103515245 + 12345) % 2147483648; return rng % n; };
-      for (let i = 0; i < 2000; i++) {
-        const rt = matchService.getRuntime(matchId);
-        if (rt.finished) break;
-        if (rt.state.phase !== 'playing') { await sleep(5); continue; }
-        const actor = rt.state.players.find((p) => getAvailableActions(rt.state, p.id).length > 0);
-        const types = getAvailableActions(rt.state, actor.id).filter((t) => t !== 'GO_TO_DECK' || pick(8) === 0);
-        const type = types[pick(types.length)] || 'GO_TO_DECK';
-        const payload = type === 'PLAY_CARD' ? { cardId: rt.state.hand.cards[actor.id][0] } : {};
-        await matchService.handleAction(actor.id, { matchId, actionId: randomUUID(), type, payload });
-      }
-
-      const rt = matchService.getRuntime(matchId);
-      expect(rt.finished).toBe(true);
+      await playToEnd(matchId);
       expect(leaks).toEqual([]);
 
       const match = await Match.findById(matchId).lean();
@@ -165,9 +324,8 @@ describe.skipIf(!hasTestDb)('salas y partidas (integración)', () => {
     }, 120000);
 
     it('ignora acciones repetidas y rechaza a quien no juega', async () => {
-      const [host, guest, outsider] = [await createUser(), await createUser(), await createUser()];
-      const room = await roomService.createRoom(host, { uuid: randomUUID(), targetPoints: 15, bet: 0 });
-      const { matchId } = await roomService.joinRoom(guest, room.id);
+      const outsider = await createUser();
+      const { matchId } = await startTable();
       const rt = matchService.getRuntime(matchId);
       const mano = rt.state.players[rt.state.hand.manoSeat].id;
       const actionId = randomUUID();
@@ -182,32 +340,11 @@ describe.skipIf(!hasTestDb)('salas y partidas (integración)', () => {
     });
 
     it('una nueva conexión del mismo jugador reemplaza a la anterior', async () => {
-      const [host, guest] = [await createUser(), await createUser()];
-      const room = await roomService.createRoom(host, { uuid: randomUUID(), targetPoints: 15, bet: 0 });
-      const { matchId } = await roomService.joinRoom(guest, room.id);
-
-      await matchService.attachSocket(matchId, host.id, fakeSocket('tab-1'));
+      const { host, matchId, sockets } = await startTable();
       await matchService.attachSocket(matchId, host.id, fakeSocket('tab-2'));
       expect(emissions).toContainEqual(expect.objectContaining({
-        target: 'tab-1', event: 'game:error', data: expect.objectContaining({ code: 'SESSION_REPLACED' })
+        target: sockets[host.id].id, event: 'game:error', data: expect.objectContaining({ code: 'SESSION_REPLACED' })
       }));
-
-      matchService.detachSocket(host.id, 'tab-2');
-      expect(emissions).toContainEqual(expect.objectContaining({ event: 'player:disconnected', data: { playerId: host.id, graceSeconds: null } }));
-      await matchService.attachSocket(matchId, host.id, fakeSocket('tab-3'));
-      expect(emissions).toContainEqual(expect.objectContaining({ event: 'player:reconnected', data: { playerId: host.id } }));
-    });
-
-    it('al reiniciar, las partidas en juego se cancelan', async () => {
-      const [host, guest] = [await createUser(), await createUser()];
-      const room = await roomService.createRoom(host, { uuid: randomUUID(), targetPoints: 15, bet: 0 });
-      const { matchId } = await roomService.joinRoom(guest, room.id);
-      matchService.clearRuntimes();
-
-      expect(await matchService.cancelInterruptedMatches()).toBe(1);
-      expect((await Match.findById(matchId).lean()).status).toBe('cancelled');
-      expect((await Room.findById(room.id).lean()).status).toBe('cancelled');
-      expect(await roomService.getActiveRoom(host.id)).toBeNull();
     });
   });
 });

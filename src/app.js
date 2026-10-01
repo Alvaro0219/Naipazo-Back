@@ -8,7 +8,7 @@ import { connectDb } from './config/db.js';
 import { env } from './config/env.js';
 import { globalApiLimiter } from './middlewares/rateLimit.js';
 import apiRoutes from './routes/index.js';
-import { cancelInterruptedMatches } from './services/matchService.js';
+import { recoverOnStartup } from './services/matchService.js';
 import { initSockets } from './sockets/index.js';
 import { AppError } from './utils/AppError.js';
 import { fail } from './utils/response.js';
@@ -71,8 +71,8 @@ export async function startServer() {
     process.exit(1);
   }
 
-  // Las partidas en memoria no sobreviven a un reinicio: se cancelan las que quedaron en juego
-  await cancelInterruptedMatches();
+  // Las partidas en memoria no sobreviven a un reinicio: se cancelan (con reembolso) las que quedaron en juego
+  await recoverOnStartup();
 
   // Socket.IO se monta sobre el mismo servidor HTTP
   const server = http.createServer(app);

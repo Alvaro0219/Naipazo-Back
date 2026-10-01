@@ -1,6 +1,8 @@
 import { randomInt } from 'node:crypto';
+import { env } from '../config/env.js';
 import {
-  PHASES, applyAction, createMatchState, dealNextHand, projectStateFor, shuffleDeck
+  PHASES, applyAction, applyTimeout, createMatchState, dealNextHand, forfeitMatch,
+  getActingPlayerIds, projectStateFor, shuffleDeck
 } from '../game/truco/index.js';
 import { Match } from '../models/Match.js';
 import { MatchHandLog } from '../models/MatchHandLog.js';
@@ -8,16 +10,24 @@ import { Room } from '../models/Room.js';
 import { User } from '../models/User.js';
 import * as emitter from '../sockets/emitter.js';
 import { AppError } from '../utils/AppError.js';
+import { buildChipsSummary, settleMatchBets, settlePendingBets } from './betService.js';
 
-// Orquesta motor + persistencia + emisiones. Las partidas activas viven en memoria
-// (una sola instancia del backend en la Fase 1) y se persiste el resultado de cada mano.
+// Orquesta motor + apuestas + persistencia + timers + emisiones. Las partidas activas viven en
+// memoria (una sola instancia del backend en la Fase 1) y se persiste el resultado de cada mano.
 //
-// Reinicio del servidor: las partidas que estaban en juego se CANCELAN (ver cancelInterruptedMatches).
-// En M5 ese paso también reembolsa las apuestas bloqueadas.
+// Timers (el motor no conoce el reloj):
+//  - Turno: TURN_TIMEOUT_SECONDS por decisión. Al vencer, `applyTimeout` (no quiero / pierde la mano).
+//    Se pausa mientras quien tiene que actuar está desconectado: ahí corre la gracia de reconexión.
+//  - Gracia de reconexión: RECONNECT_GRACE_SECONDS. Si no vuelve, pierde la partida por abandono.
+//
+// Reinicio del servidor: las partidas en juego se CANCELAN y se devuelven las apuestas
+// (ver recoverOnStartup).
 
 export const settings = {
   nextHandDelayMs: 2500, // pausa para que se vea cómo terminó la mano antes del próximo reparto
-  finishedTtlMs: 5 * 60 * 1000 // cuánto queda en memoria una partida terminada (para reconexiones tardías)
+  finishedTtlMs: 5 * 60 * 1000, // cuánto queda en memoria una partida terminada (reconexiones tardías)
+  turnTimeoutMs: env.turnTimeoutSeconds * 1000,
+  reconnectGraceMs: env.reconnectGraceSeconds * 1000
 };
 const MAX_REMEMBERED_ACTIONS = 200;
 
@@ -26,7 +36,7 @@ const runtimes = new Map();
 
 // ─── Ciclo de vida ────────────────────────────────────────
 
-/** Arranca una partida ya persistida (Match en estado `playing`). */
+/** Arranca una partida ya persistida (Match en estado `playing`, apuestas ya bloqueadas). */
 export function startMatch({ match, room }) {
   const players = [...match.players].sort((a, b) => a.seat - b.seat).map((p) => ({
     id: String(p.userId),
@@ -37,6 +47,7 @@ export function startMatch({ match, room }) {
     matchId: String(match._id),
     roomId: String(room._id),
     roomCode: room.code,
+    bet: match.config.bet || 0,
     players,
     state: createMatchState({
       config: { targetPoints: match.config.targetPoints },
@@ -47,16 +58,24 @@ export function startMatch({ match, room }) {
     everConnected: new Set(), // para distinguir la primera conexión de una reconexión
     recentActionIds: [],
     handLog: null,
-    timers: new Set(),
-    finished: false
+    timers: new Set(), // timers sueltos (reparto, limpieza)
+    turn: null, // { timer, deadline }
+    grace: new Map(), // userId -> { timer, deadline }
+    finishing: false,
+    finished: false,
+    abandonedBy: null,
+    chips: null
   };
   runtimes.set(rt.matchId, rt);
+
+  // Hasta que cada jugador abra la mesa corre su gracia: si nunca entra, pierde por abandono
+  for (const p of players) startGrace(rt, p.id, { announce: false });
   dealHand(rt);
   return rt;
 }
 
 function dealHand(rt) {
-  if (rt.finished) return;
+  if (rt.finished || rt.finishing) return;
   const { state, events } = dealNextHand(rt.state, shuffleDeck());
   rt.state = state;
   rt.handLog = {
@@ -79,18 +98,32 @@ function schedule(rt, fn, delayMs) {
   rt.timers.add(timer);
 }
 
+function clearAllTimers(rt) {
+  for (const timer of rt.timers) clearTimeout(timer);
+  rt.timers.clear();
+  if (rt.turn) clearTimeout(rt.turn.timer);
+  rt.turn = null;
+  for (const { timer } of rt.grace.values()) clearTimeout(timer);
+  rt.grace.clear();
+}
+
 // ─── Acciones ─────────────────────────────────────────────
+
+function getActiveRuntime(matchId, userId) {
+  const rt = runtimes.get(String(matchId));
+  if (!rt || rt.finished || rt.finishing) throw new AppError('La partida no está activa', 404, 'MATCH_NOT_ACTIVE');
+  if (!rt.players.some((p) => p.id === userId)) {
+    throw new AppError('No sos parte de esta partida', 403, 'NOT_A_PLAYER');
+  }
+  return rt;
+}
 
 /**
  * Aplica una intención de jugada. `actionId` (uuid del cliente) evita procesar dos veces
  * la misma acción si el cliente reintenta. Lanza RuleError/AppError si no es válida.
  */
 export async function handleAction(userId, { matchId, actionId, type, payload }) {
-  const rt = runtimes.get(matchId);
-  if (!rt || rt.finished) throw new AppError('La partida no está activa', 404, 'MATCH_NOT_ACTIVE');
-  if (!rt.players.some((p) => p.id === userId)) {
-    throw new AppError('No sos parte de esta partida', 403, 'NOT_A_PLAYER');
-  }
+  const rt = getActiveRuntime(matchId, userId);
   if (rt.recentActionIds.includes(actionId)) return { duplicated: true };
 
   // El motor es síncrono: el estado se actualiza antes de cualquier await, así que dos
@@ -106,11 +139,45 @@ export async function handleAction(userId, { matchId, actionId, type, payload })
   return { duplicated: false };
 }
 
+/** El jugador abandona voluntariamente: pierde la partida (y la apuesta). */
+export async function abandonMatch(userId, matchId) {
+  const rt = getActiveRuntime(matchId, userId);
+  await endByAbandon(rt, userId);
+}
+
+async function endByAbandon(rt, userId) {
+  if (rt.finished || rt.finishing) return;
+  const player = rt.state.players.find((p) => p.id === userId);
+  const { state, events } = forfeitMatch(rt.state, player.team, 'abandon');
+  rt.state = state;
+  rt.abandonedBy = userId;
+  rt.handLog?.events.push({ action: 'ABANDON', playerId: userId, payload: null, timestamp: new Date() });
+  publish(rt, events);
+  await afterTransition(rt);
+}
+
+async function onTurnTimeout(rt) {
+  rt.turn = null;
+  if (rt.finished || rt.finishing || rt.state.phase !== PHASES.PLAYING) return;
+  const { state, events, playerId } = applyTimeout(rt.state);
+  rt.state = state;
+  rt.handLog.events.push({ action: 'TIMEOUT', playerId, payload: null, timestamp: new Date() });
+  publish(rt, events);
+  try {
+    await afterTransition(rt);
+  } catch (err) {
+    console.error(`Error tras el vencimiento de turno en la partida ${rt.matchId}:`, err);
+  }
+}
+
 async function afterTransition(rt) {
   if (rt.state.phase === PHASES.HAND_OVER) {
     await persistHand(rt);
     schedule(rt, () => dealHand(rt), settings.nextHandDelayMs);
   } else if (rt.state.phase === PHASES.FINISHED) {
+    if (rt.finishing || rt.finished) return;
+    rt.finishing = true;
+    clearAllTimers(rt);
     await persistHand(rt);
     await finishMatch(rt);
   }
@@ -118,6 +185,8 @@ async function afterTransition(rt) {
 
 async function persistHand(rt) {
   const { state, handLog } = rt;
+  if (!handLog || handLog.persisted) return;
+  handLog.persisted = true;
   try {
     await MatchHandLog.create({
       ...handLog,
@@ -133,29 +202,75 @@ async function persistHand(rt) {
 }
 
 async function finishMatch(rt) {
-  rt.finished = true;
-  for (const timer of rt.timers) clearTimeout(timer);
-  rt.timers.clear();
-
   const { state } = rt;
-  const endedAt = new Date();
   await Match.updateOne({ _id: rt.matchId }, {
     status: 'finished',
     score: [...state.score],
     winnerTeam: state.winnerTeam,
     endReason: state.endReason,
-    endedAt
+    abandonedBy: rt.abandonedBy,
+    endedAt: new Date()
   });
   await Room.updateOne({ _id: rt.roomId }, { status: 'finished' });
-  await User.bulkWrite(state.players.map((p) => ({
-    updateOne: {
-      filter: { _id: p.id },
-      update: { $inc: { 'stats.played': 1, [p.team === state.winnerTeam ? 'stats.won' : 'stats.lost']: 1 } }
-    }
-  })));
 
+  // Pago del pozo. Si falla, la partida queda con betsSettled=false y se reintenta al arrancar.
+  try {
+    rt.chips = await settleMatchBets(rt.matchId);
+  } catch (err) {
+    console.error(`No se pudo pagar la apuesta de la partida ${rt.matchId}:`, err);
+  }
+
+  await User.bulkWrite(state.players.map((p) => {
+    const won = p.team === state.winnerTeam;
+    const inc = { 'stats.played': 1, [won ? 'stats.won' : 'stats.lost']: 1 };
+    if (p.id === rt.abandonedBy) inc['stats.abandoned'] = 1;
+    const net = rt.chips?.players.find((c) => c.userId === p.id)?.net ?? 0;
+    if (net > 0) inc['stats.chipsWon'] = net;
+    return { updateOne: { filter: { _id: p.id }, update: { $inc: inc } } };
+  }));
+
+  rt.finished = true;
+  rt.finishing = false;
   emitter.toMatch(rt.matchId, 'game:finished', buildFinishedSummary(rt));
   schedule(rt, () => runtimes.delete(rt.matchId), settings.finishedTtlMs);
+}
+
+// ─── Timers ───────────────────────────────────────────────
+
+/** Reinicia el timer de turno para quien tiene que actuar (o lo pausa si está desconectado). */
+function refreshTurnTimer(rt) {
+  if (rt.turn) clearTimeout(rt.turn.timer);
+  rt.turn = null;
+  if (rt.finished || rt.finishing || rt.state.phase !== PHASES.PLAYING) return;
+
+  const actors = getActingPlayerIds(rt.state);
+  if (actors.length === 0 || actors.some((id) => !rt.sockets.has(id))) return;
+
+  const timer = setTimeout(() => onTurnTimeout(rt), settings.turnTimeoutMs);
+  rt.turn = { timer, deadline: Date.now() + settings.turnTimeoutMs, playerIds: actors };
+}
+
+function startGrace(rt, userId, { announce = true } = {}) {
+  if (rt.finished || rt.finishing || rt.grace.has(userId)) return;
+  const timer = setTimeout(() => {
+    rt.grace.delete(userId);
+    endByAbandon(rt, userId).catch((err) => console.error(`Error al dar por abandonada la partida ${rt.matchId}:`, err));
+  }, settings.reconnectGraceMs);
+  rt.grace.set(userId, { timer, deadline: Date.now() + settings.reconnectGraceMs });
+  if (announce) {
+    emitter.toMatch(rt.matchId, 'player:disconnected', {
+      playerId: userId,
+      graceSeconds: Math.round(settings.reconnectGraceMs / 1000)
+    });
+  }
+}
+
+function stopGrace(rt, userId) {
+  const grace = rt.grace.get(userId);
+  if (!grace) return false;
+  clearTimeout(grace.timer);
+  rt.grace.delete(userId);
+  return true;
 }
 
 // ─── Conexiones ───────────────────────────────────────────
@@ -184,33 +299,39 @@ export async function attachSocket(matchId, userId, socket) {
     });
     emitter.removeSocketFromRoom(previous, emitter.rooms.match(rt.matchId));
   }
-  const wasAway = !previous;
   rt.sockets.set(userId, socket.id);
   socket.join(emitter.rooms.match(rt.matchId));
-  socket.emit('game:state', buildStateFor(rt, userId));
 
   if (rt.finished) {
+    socket.emit('game:state', buildStateFor(rt, userId));
     socket.emit('game:finished', buildFinishedSummary(rt));
-  } else if (wasAway && rt.everConnected.has(userId)) {
+    return;
+  }
+
+  const wasInGrace = stopGrace(rt, userId);
+  if (wasInGrace && rt.everConnected.has(userId)) {
     emitter.toMatch(rt.matchId, 'player:reconnected', { playerId: userId });
   }
   rt.everConnected.add(userId);
+  // Puede reanudarse un turno pausado: se reenvía el estado (con el nuevo plazo) a todos
+  publish(rt, []);
 }
 
-/** Se desconectó un socket: avisa al rival. (La gracia de reconexión y el abandono llegan en M5.) */
+/** Se desconectó un socket: arranca la gracia de reconexión y se pausa su turno si le tocaba. */
 export function detachSocket(userId, socketId) {
   for (const rt of runtimes.values()) {
     if (rt.sockets.get(userId) !== socketId) continue;
     rt.sockets.delete(userId);
-    if (!rt.finished) {
-      emitter.toMatch(rt.matchId, 'player:disconnected', { playerId: userId, graceSeconds: null });
-    }
+    if (rt.finished || rt.finishing) continue;
+    startGrace(rt, userId);
+    publish(rt, []);
   }
 }
 
 // ─── Proyecciones ─────────────────────────────────────────
 
 function publish(rt, events) {
+  refreshTurnTimer(rt);
   // Los eventos del motor son públicos (cartas jugadas, cantos, tantos anunciados)
   for (const event of events) emitter.toMatch(rt.matchId, 'game:event', event);
   // El estado se envía proyectado a cada jugador por separado: nunca un broadcast del estado completo
@@ -221,11 +342,22 @@ function publish(rt, events) {
 }
 
 export function buildStateFor(rt, userId) {
+  const now = Date.now();
   return {
     matchId: rt.matchId,
     roomId: rt.roomId,
     roomCode: rt.roomCode,
+    bet: rt.bet,
     usernames: Object.fromEntries(rt.players.map((p) => [p.id, p.username])),
+    // Se manda el tiempo restante (no la hora) para no depender del reloj del cliente
+    turn: rt.turn
+      ? { playerIds: rt.turn.playerIds, remainingMs: Math.max(0, rt.turn.deadline - now), totalMs: settings.turnTimeoutMs }
+      : null,
+    disconnected: Object.fromEntries(
+      [...rt.grace.entries()]
+        .filter(([id]) => rt.everConnected.has(id))
+        .map(([id, g]) => [id, { remainingMs: Math.max(0, g.deadline - now) }])
+    ),
     ...projectStateFor(rt.state, userId)
   };
 }
@@ -238,7 +370,8 @@ function buildFinishedSummary(rt) {
     winnerIds: state.players.filter((p) => p.team === state.winnerTeam).map((p) => p.id),
     score: [...state.score],
     endReason: state.endReason,
-    chips: null // M5: movimiento de fichas de la apuesta
+    abandonedBy: rt.abandonedBy,
+    chips: rt.chips
   };
 }
 
@@ -249,27 +382,30 @@ function buildFinishedSummaryFromDoc(match) {
     winnerIds: match.players.filter((p) => p.team === match.winnerTeam).map((p) => String(p.userId)),
     score: match.score,
     endReason: match.endReason,
-    chips: null
+    abandonedBy: match.abandonedBy ? String(match.abandonedBy) : null,
+    chips: buildChipsSummary(match)
   };
 }
 
 // ─── Arranque del servidor ────────────────────────────────
 
 /**
- * Al reiniciar, las partidas en memoria se pierden: se cancelan las que quedaron en juego.
- * (Política elegida: cancelar en vez de restaurar; en M5 incluye reembolsar las apuestas.)
+ * Al reiniciar, las partidas en memoria se pierden. Política elegida: se CANCELAN las que quedaron
+ * en juego y se devuelven sus apuestas; además se completa cualquier pago que haya quedado pendiente.
  */
-export async function cancelInterruptedMatches() {
+export async function recoverOnStartup() {
   const interrupted = await Match.find({ status: 'playing' }).select('_id roomId').lean();
-  if (interrupted.length === 0) return 0;
-  const now = new Date();
-  await Match.updateMany(
-    { _id: { $in: interrupted.map((m) => m._id) } },
-    { status: 'cancelled', endReason: 'cancelled', endedAt: now }
-  );
-  await Room.updateMany({ _id: { $in: interrupted.map((m) => m.roomId) } }, { status: 'cancelled' });
-  console.warn(`Se cancelaron ${interrupted.length} partida(s) interrumpidas por el reinicio`);
-  return interrupted.length;
+  if (interrupted.length > 0) {
+    await Match.updateMany(
+      { _id: { $in: interrupted.map((m) => m._id) } },
+      { status: 'cancelled', endReason: 'cancelled', endedAt: new Date() }
+    );
+    await Room.updateMany({ _id: { $in: interrupted.map((m) => m.roomId) } }, { status: 'cancelled' });
+    console.warn(`Se cancelaron ${interrupted.length} partida(s) interrumpidas por el reinicio`);
+  }
+  const settled = await settlePendingBets();
+  if (settled > 0) console.warn(`Se liquidaron ${settled} apuesta(s) pendientes`);
+  return { cancelled: interrupted.length, settled };
 }
 
 // ─── Solo tests ───────────────────────────────────────────
@@ -279,6 +415,6 @@ export function getRuntime(matchId) {
 }
 
 export function clearRuntimes() {
-  for (const rt of runtimes.values()) for (const timer of rt.timers) clearTimeout(timer);
+  for (const rt of runtimes.values()) clearAllTimers(rt);
   runtimes.clear();
 }
