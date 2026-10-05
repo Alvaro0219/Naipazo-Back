@@ -6,3 +6,5 @@ coverage/
 *.log
 .DS_Store
 *.local.md
+playwright-report/
+test-results/
