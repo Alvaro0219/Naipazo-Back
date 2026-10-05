@@ -1,10 +1,13 @@
 import rateLimit from 'express-rate-limit';
 import { env } from '../config/env.js';
 
+// RATE_LIMITS_RELAXED (solo pruebas e2e, nunca en producción) multiplica los topes para poder repetir corridas
+const relax = (max) => (env.rateLimitsRelaxed ? max * 100 : max);
+
 function buildLimiter({ windowMs, max, message }) {
   return rateLimit({
     windowMs,
-    max,
+    max: relax(max),
     standardHeaders: true,
     legacyHeaders: false,
     message: { success: false, error: { message, code: 'RATE_LIMITED' } }
@@ -46,7 +49,7 @@ export const roomCodeIpLimiter = buildLimiter({
 
 export const roomCodeUserLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
-  max: 15,
+  max: relax(15),
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => `user:${req.user.id}`,

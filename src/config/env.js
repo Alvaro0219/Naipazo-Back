@@ -39,9 +39,13 @@ const schema = Joi.object({
   EMAIL_FROM: Joi.string().allow('').default('Naipazo <no-responder@naipazo.local>'),
   APP_URL: Joi.string().uri({ scheme: ['http', 'https'] }).default('http://localhost:5173'),
   REQUIRE_EMAIL_VERIFICATION: Joi.boolean(),
+  // Solo desarrollo y pruebas end-to-end: además de la consola, cada email se agrega a este archivo (JSON por línea)
+  EMAIL_OUTBOX_FILE: Joi.string().allow('').default(''),
 
   // Integridad de fichas (P5)
   REGISTER_MAX_PER_IP_PER_DAY: Joi.number().integer().min(1).default(10),
+  // Solo pruebas end-to-end: multiplica por 100 todos los rate limits (se ignora en producción)
+  RATE_LIMITS_RELAXED: Joi.boolean().default(false),
   PRIVATE_MAX_BET: Joi.number().integer().min(1).default(1000),
 
   // Vencimientos (P6)
@@ -89,12 +93,14 @@ export const env = {
   tournamentNextMatchSeconds: toInt(parsed.TOURNAMENT_NEXT_MATCH_SECONDS, 10),
 
   emailApiKey: parsed.EMAIL_API_KEY || '',
+  emailOutboxFile: parsed.NODE_ENV === 'production' ? '' : (parsed.EMAIL_OUTBOX_FILE || ''),
   emailFrom: parsed.EMAIL_FROM || 'Naipazo <no-responder@naipazo.local>',
   appUrl: (parsed.APP_URL || 'http://localhost:5173').replace(/\/$/, ''),
   // Por defecto: obligatoria en producción, opcional en desarrollo y tests
   requireEmailVerification: parsed.REQUIRE_EMAIL_VERIFICATION ?? parsed.NODE_ENV === 'production',
 
   registerMaxPerIpPerDay: toInt(parsed.REGISTER_MAX_PER_IP_PER_DAY, 10),
+  rateLimitsRelaxed: parsed.NODE_ENV !== 'production' && parsed.RATE_LIMITS_RELAXED === true,
   privateMaxBet: toInt(parsed.PRIVATE_MAX_BET, 1000),
 
   roomWaitingTtlMinutes: toInt(parsed.ROOM_WAITING_TTL_MINUTES, 10),

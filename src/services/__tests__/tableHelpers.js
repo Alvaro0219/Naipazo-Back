@@ -23,7 +23,8 @@ export function fakeSocket(id) {
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export async function waitFor(predicate, { timeoutMs = 5000, stepMs = 10 } = {}) {
+// 15 s: con Atlas, en la suite completa, algunas esperas superan los 5 s
+export async function waitFor(predicate, { timeoutMs = 15000, stepMs = 10 } = {}) {
   const start = Date.now();
   while (!(await predicate())) {
     if (Date.now() - start > timeoutMs) throw new Error('Tiempo de espera agotado');

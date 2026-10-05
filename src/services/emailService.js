@@ -1,3 +1,4 @@
+import { appendFile } from 'node:fs/promises';
 import { env } from '../config/env.js';
 
 // Envío de emails transaccionales con Resend (API HTTP, sin librerías). Sin EMAIL_API_KEY el email
@@ -15,6 +16,9 @@ export async function sendEmail({ to, subject, text, html }) {
   if (testOutbox) {
     testOutbox.push({ to, subject, text, html });
     return;
+  }
+  if (env.emailOutboxFile) {
+    await appendFile(env.emailOutboxFile, `${JSON.stringify({ to, subject, text, at: new Date().toISOString() })}\n`);
   }
   if (!env.emailApiKey) {
     console.info(`\n[email] Para: ${to}\n[email] Asunto: ${subject}\n${text}\n`);
