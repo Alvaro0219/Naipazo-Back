@@ -110,24 +110,26 @@ simuladas (`views`).
 
 - **Flor** (cuando se habilite): puntaje con dos flores (achicarse, contraflor, contraflor al resto) y
   si la flor no cantada se pierde al jugar la segunda carta.
-- 2 vs 2: ver la propuesta de abajo (se confirma con el dueño en M8.1).
+- 2 vs 2: reglas confirmadas abajo (M8.1).
 
-## 2 vs 2 — propuesta para M8 (a confirmar)
+## 2 vs 2 (M8) — reglas confirmadas por el dueño (05/10/2026)
 
-Valores por defecto de `ACTUALIZACIONES_Y_2VS2.md` (10.2). Los marcados **a confirmar** se consultan al dueño antes
-de cerrar M8; hasta entonces **no hay código de 2 vs 2**.
+Todo lo que no se menciona acá funciona igual que en 1 vs 1, por equipo. El 1 vs 1 no cambia.
 
-| Tema | Regla propuesta |
-|---|---|
-| Equipos | Asientos 0 y 2 (equipo A) contra 1 y 3 (equipo B): compañeros enfrentados. |
-| Sentido | 0 → 1 → 2 → 3. En pantalla, el siguiente queda a la derecha (antihorario). **A confirmar.** |
-| Reparto y mano | Reparte un asiento que rota cada mano; es mano el siguiente al que reparte. |
-| Orden de la baza | Empieza el mano; en las siguientes, quien jugó la carta ganadora. |
-| Ganador de la baza | Carta más alta. Empate entre equipos distintos: parda. Empate entre compañeros: gana ese equipo. |
-| Tras una parda | Empieza quien jugó primero una de las cartas empardadas. **A confirmar.** |
-| Ganador de la mano | Mismas reglas que 1 vs 1 por equipo; tres pardas: gana el equipo del mano. |
-| Truco | Lo canta cualquiera en su turno; responde cualquiera de los dos rivales (vale la primera respuesta). "El quiero" es del equipo. |
-| Envido | Cualquiera en su turno, en la primera baza, antes de jugar su primera carta. **A confirmar** (variante: solo los pies). Cuentan los tantos más altos de la pareja. |
-| Canto de tantos | Desde el mano: el primero canta; los siguientes pasan si su equipo ya gana, cantan si superan estrictamente, o dicen "son buenas". Los tantos no revelados no se envían a nadie, ni al compañero. |
-| Ir al mazo | El mazo es del equipo. **A confirmar.** |
-| Flor | No existe. |
+| Tema | Regla | Test |
+|---|---|---|
+| Equipos | Asientos 0 y 2 (equipo A) contra 1 y 3 (equipo B): compañeros enfrentados. | engine2v2 |
+| Sentido | 0 → 1 → 2 → 3. En pantalla, cada jugador se ve abajo y el siguiente queda a su derecha (antihorario). | engine2v2 |
+| Reparto y mano | Reparte un asiento que rota cada mano; es mano el siguiente al que reparte. 3 cartas a cada uno. | engine2v2 |
+| Orden de la baza | Empieza el mano; en las siguientes, quien jugó la carta ganadora de la baza anterior. | engine2v2 |
+| Ganador de la baza | Carta más alta. Empate entre equipos distintos: parda. Empate entre compañeros: gana ese equipo (y abre quien la jugó primero). | engine2v2 |
+| Tras una parda | Empieza el mano y sigue la ronda antihoraria. | engine2v2 |
+| Ganador de la mano | Mismas reglas de bazas y pardas que 1 vs 1, por equipo; tres pardas: gana el equipo del mano. | engine2v2 |
+| **Quién responde un canto** | **Uno solo de los rivales: el más mano**, es decir, el rival que juega antes en el orden de la baza en curso. Ej.: orden A1, B1, A2, B2; si canta A2, responde B1. Vale para truco, retruco, vale cuatro y envido. Solo él ve "Quiero" y "No quiero" (y puede subir o irse al mazo). | engine2v2 |
+| Truco | Lo canta cualquiera en su turno. "El quiero" es del equipo que aceptó: cualquiera de sus dos jugadores puede subir en su turno, y el que responde puede subir al responder. | engine2v2 |
+| **Envido** | **Solo lo cantan los pies** (el último de cada pareja en la primera baza: el compañero del mano y el que reparte), en su turno de la primera baza, antes de jugar su carta. Lo responde el rival más mano, que puede subirlo. | engine2v2 |
+| El envido está primero | Si en la primera baza cantan truco, **quien lo responde puede anteponer el envido aunque no sea pie**. | engine2v2 |
+| Canto de tantos | Desde el mano en el sentido del juego: el primero canta; los siguientes pasan si su equipo ya gana, cantan si superan estrictamente al mejor revelado, o dicen "son buenas". Gana el equipo que va ganando al final (el empate lo gana quien cantó antes). Los tantos no revelados no se envían a nadie, **ni al compañero**. | engine2v2, views |
+| Ir al mazo | El mazo es del equipo: si uno se va, su equipo pierde la mano (mismas sumas que en 1 vs 1). Puede irse quien está en turno o quien debe responder un canto. | engine2v2 |
+| Tiempo | Turno por jugador (20 s). Canto pendiente: el reloj corre para el rival que debe responder; si vence, "no quiero". | engine2v2 |
+| Flor | No existe. | — |
