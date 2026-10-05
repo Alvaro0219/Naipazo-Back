@@ -63,6 +63,7 @@ function projectHand(state, hand, me) {
         call: pending.kind === 'truco' ? TRUCO_NAMES[pending.level] : hand.envido.calls.at(-1),
         callerId: pending.callerId,
         callerTeam: pending.callerTeam,
+        responderId: state.players[pending.responderSeat].id,
         trucoWaiting: Boolean(pending.deferredTruco)
       }
       : null,

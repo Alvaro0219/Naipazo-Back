@@ -6,11 +6,11 @@ import { PHASES, createMatchState } from '../state.js';
  * Juega una partida completa entre bots que eligen acciones legales al azar.
  * `onStep(state)` se llama después de cada cambio de estado (para verificar invariantes).
  */
-export function simulateMatch({ targetPoints, rng, onStep = () => {}, maxSteps = 20000 }) {
+export function simulateMatch({ targetPoints, rng, players = 2, onStep = () => {}, maxSteps = 40000 }) {
   let state = createMatchState({
     config: { targetPoints },
-    playerIds: ['P1', 'P2'],
-    dealerSeat: rng(2)
+    playerIds: Array.from({ length: players }, (_, i) => `P${i + 1}`),
+    dealerSeat: rng(players)
   });
   const actions = [];
 

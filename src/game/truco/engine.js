@@ -39,6 +39,32 @@ const otherTeam = (team) => 1 - team;
 const manoTeamOf = (state) => state.players[state.hand.manoSeat].team;
 const currentBaza = (hand) => hand.bazas[hand.bazas.length - 1];
 
+/** Asientos en el orden de juego de la baza en curso (desde quien la abrió). */
+function bazaOrder(state) {
+  const n = state.players.length;
+  const leader = currentBaza(state.hand).leaderSeat;
+  return Array.from({ length: n }, (_, k) => (leader + k) % n);
+}
+
+/**
+ * Quién responde un canto: uno solo de los rivales, el más mano (el que juega antes en la baza en curso).
+ * En 1 vs 1 es siempre el único rival.
+ */
+function responderSeatFor(state, callerTeam) {
+  return bazaOrder(state).find((seat) => state.players[seat].team !== callerTeam);
+}
+
+/**
+ * En 2 vs 2 el envido lo cantan solo los pies: el último de cada pareja en la primera baza
+ * (el compañero del mano y el que reparte). En 1 vs 1 lo canta cualquiera en su turno.
+ */
+function isPie(state, seat) {
+  const n = state.players.length;
+  if (n === 2) return true;
+  const { manoSeat } = state.hand;
+  return seat === (manoSeat + 2) % n || seat === (manoSeat + 3) % n;
+}
+
 /** El envido solo se canta en la primera baza, una vez por mano y antes de que se quiera el truco. */
 function envidoWindowOpen(hand) {
   return hand.envido.status === 'none' && hand.bazas.length === 1 && hand.truco.level === 1;
@@ -55,7 +81,8 @@ function check(state, playerId, type, payload = {}) {
   const { hand } = state;
   const { pending } = hand;
   const onTurn = !pending && hand.turnSeat === me.seat;
-  const responding = Boolean(pending) && me.team !== pending.callerTeam;
+  // Un canto lo responde un solo jugador: el rival más mano (pending.responderSeat)
+  const responding = Boolean(pending) && me.seat === pending.responderSeat;
   const notAllowed = () => new RuleError('ACTION_NOT_ALLOWED', 'No podés hacer eso ahora');
 
   if (type === 'PLAY_CARD') {
@@ -78,9 +105,9 @@ function check(state, playerId, type, payload = {}) {
 
   if (type in ENVIDO_ACTIONS) {
     const call = ENVIDO_ACTIONS[type];
-    if (onTurn && envidoWindowOpen(hand)) return;
+    if (onTurn && envidoWindowOpen(hand) && isPie(state, me.seat)) return;
     if (responding && pending.kind === 'envido' && canRaiseEnvido(hand.envido.calls, call)) return;
-    // "El envido está primero": responder a un truco (todavía no querido) cantando envido
+    // "El envido está primero": quien responde un truco (todavía no querido) puede cantar envido, sea pie o no
     if (responding && pending.kind === 'truco' && pending.level === 2 && envidoWindowOpen(hand)) return;
     throw notAllowed();
   }
@@ -147,8 +174,8 @@ function resolveBaza(state, events) {
   }
 
   // Quien gana la baza juega primero en la siguiente; con parda, el mano
-  hand.bazas.push({ plays: [], winnerTeam: undefined });
   hand.turnSeat = winnerPlayerId === null ? hand.manoSeat : findPlayer(state, winnerPlayerId).seat;
+  hand.bazas.push({ plays: [], winnerTeam: undefined, leaderSeat: hand.turnSeat });
 }
 
 /**
@@ -231,7 +258,7 @@ export function dealNextHand(state, deck) {
     deck: [...deck], // mazo barajado completo, para el MatchHandLog. Nunca se proyecta.
     dealt: structuredClone(cards),
     cards,
-    bazas: [{ plays: [], winnerTeam: undefined }],
+    bazas: [{ plays: [], winnerTeam: undefined, leaderSeat: manoSeat }],
     turnSeat: manoSeat,
     truco: { level: 1, holderTeam: null },
     envido: { status: 'none', calls: [], result: null },
@@ -268,14 +295,16 @@ export function applyAction(state, playerId, action) {
     const level = TRUCO_CALLS[type];
     // Subir implica querer el nivel anterior
     hand.truco.level = level - 1;
-    hand.pending = { kind: 'truco', level, callerTeam: me.team, callerId: me.id };
+    hand.pending = { kind: 'truco', level, callerTeam: me.team, callerId: me.id, responderSeat: responderSeatFor(s, me.team) };
     events.push({ type: 'CALL', playerId: me.id, call: TRUCO_NAMES[level] });
   } else if (type in ENVIDO_ACTIONS) {
     const call = ENVIDO_ACTIONS[type];
     const deferredTruco = hand.pending?.kind === 'truco'
       ? hand.pending
       : (hand.pending?.deferredTruco || null);
-    hand.pending = { kind: 'envido', callerTeam: me.team, callerId: me.id, deferredTruco };
+    hand.pending = {
+      kind: 'envido', callerTeam: me.team, callerId: me.id, responderSeat: responderSeatFor(s, me.team), deferredTruco
+    };
     hand.envido.status = 'calling';
     hand.envido.calls.push(call);
     events.push({ type: 'CALL', playerId: me.id, call });
@@ -318,7 +347,7 @@ export function applyTimeout(state) {
   const { hand } = state;
 
   if (hand.pending) {
-    const responder = state.players.find((p) => p.team !== hand.pending.callerTeam);
+    const responder = state.players[hand.pending.responderSeat];
     const result = applyAction(state, responder.id, { type: 'REJECT' });
     result.events.unshift({ type: 'TURN_TIMEOUT', playerId: responder.id });
     return { ...result, playerId: responder.id };
