@@ -22,7 +22,8 @@ No hay linter configurado. Healthcheck: `GET /health` → `{"ok":true}`.
 
 Los tests de `src/services/__tests__/` son de integración y se **saltean** si `MONGO_URL_TEST` no está en
 `.env`. Esa base se **borra** (`dropDatabase`) antes de cada test: nunca apuntarla a `truco_db`.
-Corren en serie (`fileParallelism: false`) contra Atlas, por eso tardan ~30 s.
+Corren en serie (`fileParallelism: false`) contra Atlas (~3 min). `connectTestDb` aborta si la base no termina en
+`_test` o coincide con `MONGO_URL` (`utils/testDbGuard.js`). Nunca correr dos suites a la vez: comparten la base.
 
 ## Reglas que no se deducen leyendo un solo archivo
 

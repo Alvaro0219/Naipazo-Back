@@ -7,12 +7,14 @@ import { MatchHandLog } from '../../models/MatchHandLog.js';
 import { Room } from '../../models/Room.js';
 import { Tournament } from '../../models/Tournament.js';
 import { User } from '../../models/User.js';
+import { assertSafeTestDb } from '../../utils/testDbGuard.js';
 
 // Los tests de integración necesitan un MongoDB con replica set (transacciones).
 // Se activan definiendo MONGO_URL_TEST; esa base se BORRA en cada test.
 export const hasTestDb = Boolean(env.mongoUrlTest);
 
 export async function connectTestDb() {
+  assertSafeTestDb(env.mongoUrlTest, env.mongoUrl); // nunca borrar una base real
   await connectDb(env.mongoUrlTest);
 }
 

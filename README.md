@@ -34,10 +34,14 @@ Verificación rápida: `GET http://localhost:4000/health` → `{"ok":true}`.
 ### Tests
 
 - Los tests unitarios (fechas, schemas) corren siempre.
-- Los tests de integración de `walletService` y `authService` (concurrencia del crédito diario,
-  registros simultáneos, saldo = suma del ledger) necesitan un MongoDB con replica set. Se activan
+- Los tests de integración (`src/services/__tests__`: billetera, auth, salas, partidas, revancha,
+  torneos, perfil y admin) necesitan un MongoDB con replica set. Se activan
   definiendo `MONGO_URL_TEST` en `.env`. **Esa base se borra en cada test**: usá una base distinta
   a la de desarrollo (por ejemplo `.../truco_test` en el mismo cluster de Atlas).
+- **Guarda:** si el nombre de la base de `MONGO_URL_TEST` no termina en `_test`, o es la misma que
+  `MONGO_URL`, los tests de integración se niegan a conectar (`src/utils/testDbGuard.js`).
+- **No correr la suite dos veces a la vez** (por ejemplo, dos terminales con `npm test`): comparten la
+  base de pruebas, se borran los datos entre sí y fallan tests al azar. Dura unos 3 minutos.
 
 ## Variables de entorno
 
