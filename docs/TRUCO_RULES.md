@@ -110,4 +110,24 @@ simuladas (`views`).
 
 - **Flor** (cuando se habilite): puntaje con dos flores (achicarse, contraflor, contraflor al resto) y
   si la flor no cantada se pierde al jugar la segunda carta.
-- 2 vs 2: quién responde un canto por el equipo y quién abre tras una parda.
+- 2 vs 2: ver la propuesta de abajo (se confirma con el dueño en M8.1).
+
+## 2 vs 2 — propuesta para M8 (a confirmar)
+
+Valores por defecto de `ACTUALIZACIONES_Y_2VS2.md` (10.2). Los marcados **a confirmar** se consultan al dueño antes
+de cerrar M8; hasta entonces **no hay código de 2 vs 2**.
+
+| Tema | Regla propuesta |
+|---|---|
+| Equipos | Asientos 0 y 2 (equipo A) contra 1 y 3 (equipo B): compañeros enfrentados. |
+| Sentido | 0 → 1 → 2 → 3. En pantalla, el siguiente queda a la derecha (antihorario). **A confirmar.** |
+| Reparto y mano | Reparte un asiento que rota cada mano; es mano el siguiente al que reparte. |
+| Orden de la baza | Empieza el mano; en las siguientes, quien jugó la carta ganadora. |
+| Ganador de la baza | Carta más alta. Empate entre equipos distintos: parda. Empate entre compañeros: gana ese equipo. |
+| Tras una parda | Empieza quien jugó primero una de las cartas empardadas. **A confirmar.** |
+| Ganador de la mano | Mismas reglas que 1 vs 1 por equipo; tres pardas: gana el equipo del mano. |
+| Truco | Lo canta cualquiera en su turno; responde cualquiera de los dos rivales (vale la primera respuesta). "El quiero" es del equipo. |
+| Envido | Cualquiera en su turno, en la primera baza, antes de jugar su primera carta. **A confirmar** (variante: solo los pies). Cuentan los tantos más altos de la pareja. |
+| Canto de tantos | Desde el mano: el primero canta; los siguientes pasan si su equipo ya gana, cantan si superan estrictamente, o dicen "son buenas". Los tantos no revelados no se envían a nadie, ni al compañero. |
+| Ir al mazo | El mazo es del equipo. **A confirmar.** |
+| Flor | No existe. |

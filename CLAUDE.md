@@ -2,9 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Backend de **Truco Online** (Fase 1: fichas virtuales). El frontend vive en un repo hermano: `../truco-front`.
+Backend de **Naipazo** (truco online con fichas virtuales). El frontend vive en un repo hermano: `../truco-front`.
 La especificación funcional completa está en `../PROYECTO_TRUCO_ONLINE.md` (modelo de datos, reglas de truco,
-eventos de Socket.IO, torneos, hitos M0–M8). La arquitectura base sale de la skill `fullstack-scaffold`
+eventos de Socket.IO, torneos, hitos M0–M9 y Fase 2). La arquitectura base sale de la skill `fullstack-scaffold`
 (`~/.claude/skills/fullstack-scaffold/backend-architecture.md`); no se aparta de ella salvo en las extensiones
 que el documento del proyecto lista en su sección 3.2 (`socket.io`, `vitest`, `src/game/`, `src/sockets/`).
 
@@ -38,9 +38,11 @@ Corren en serie (`fileParallelism: false`) contra Atlas (~3 min). `connectTestDb
   En tests se limpia con `dropDatabase`.
 - **Transacciones requieren replica set** (Atlas lo es). Usar `utils/transaction.js#runInTransaction`;
   `withTransaction` puede reintentar el callback, así que debe ser idempotente.
+- **Git:** se trabaja siempre en `main`, sin ramas nuevas (decisión del dueño); un commit por paso; no hacer push sin confirmarlo.
 - **Crédito diario perezoso:** `claimDailyGrantIfDue` se llama en login, refresh, `GET /wallet` y (M4) al
   conectar el socket. No hay cron. Día calendario en `APP_TIMEZONE` vía `utils/dates.js` (sin librerías).
-  Las respuestas de sesión incluyen `dailyGrant: { granted, amount, nextGrantAt }`.
+  Las respuestas de sesión incluyen `dailyGrant: { granted, amount, nextGrantAt }`. Con `REQUIRE_EMAIL_VERIFICATION`
+  (por defecto `true` en producción) solo se acredita a cuentas con `emailVerified` (`requiresVerification: true`).
 - **Auth:** el access token se verifica sin DB (`utils/tokens.js#verifyAccessToken`, reutilizable por
   Socket.IO). El refresh token lleva `ver` = `User.tokenVersion`; logout lo incrementa e invalida todas las
   sesiones del usuario.
@@ -125,11 +127,30 @@ Corren en serie (`fileParallelism: false`) contra Atlas (~3 min). `connectTestDb
 - `Room.config.isPrivate`: la sala no sale en `lobby:rooms` ni en `GET /api/rooms` (filtro `config.isPrivate: { $ne: true }` en `roomService`) y no dispara `notifyLobby`.
 - Se entra solo con el código de 6 caracteres: `GET /api/rooms/code/:code` y `POST /api/rooms/join-by-code`. `joinRoom(user, id)` rechaza las privadas con 404 salvo `{ viaCode: true }`: conocer el id no alcanza.
 
+## Cuentas, integridad y vencimientos (Fase 2: P4–P6)
+
+- **Email (P4):** `services/emailService.js` (Resend por `fetch`; sin `EMAIL_API_KEY` escribe en consola;
+  `EMAIL_OUTBOX_FILE` copia cada email a un archivo fuera de producción, lo usan los e2e; `setTestOutbox` en tests).
+  `services/accountService.js`: verificación y recuperación con `AuthToken` (se guarda solo el hash SHA-256, un uso,
+  consumo atómico con `findOneAndUpdate`). `forgotPassword` responde siempre igual y no espera el envío.
+  `resetPassword` sube `tokenVersion`. Tests: `account.test.js`.
+- **Integridad (P5):** salas privadas con tope `PRIVATE_MAX_BET`; `Match.config.isPrivate` hace que la partida
+  no actualice `User.stats` ni entre al ranking (ni por período). `adminService.chipFlows` → `GET /api/admin/chip-flows`.
+  `registerLimiter` por IP y por día. Tests: `integrity.test.js`.
+- **Vencimientos (P6):** `services/expiryService.js` corre al arrancar y cada minuto:
+  `roomService.expireWaitingRooms` y `tournamentService.expireWaitingTournaments` (con devolución), `cancelReason: 'expired'`.
+  Códigos de sala con rate limit por IP y por usuario. Tests: `expiry.test.js` (reciben `now` para simular el tiempo).
+- **Rate limits:** `middlewares/rateLimit.js`. `RATE_LIMITS_RELAXED` (ignorada en producción) los multiplica ×100 para e2e.
+- **`SESSION_REPLACED`:** `attachSocket` registra cada reemplazo con los dos `socket.id`. `tournament.test.js` verifica
+  torneos de 4 y 8 con un socket por jugador sin ningún reemplazo.
+- **Frontera malas/buenas (P7):** solo `game/truco/scoring.js#scoreSection` (`MALAS_LAST_POINT = 15`).
+
 ## Hitos
 
 M0–M7 hechos (scaffold, auth, billetera, motor, salas + mesa, apuestas + timers + abandono, historial +
-ranking + perfil + admin, revancha + PWA + torneos). Próximo: M8 — despliegue (Railway + Cloudflare Pages +
-Atlas, `deployment-guide.md` de la skill; una sola instancia del back).
+ranking + perfil + admin, revancha + PWA + torneos) y Fase 2 P1–P9 (git, guarda de tests, diagnóstico de
+sesiones, email, integridad, vencimientos, reglas, tests del front, documentos). Próximo: **M8 — 2 vs 2** y
+después **M9 — despliegue** (Railway + Cloudflare Pages + Atlas; una sola instancia del back).
 
 ## Historial y privacidad
 
@@ -140,5 +161,5 @@ Atlas, `deployment-guide.md` de la skill; una sola instancia del back).
 - Errores que no son de sesión (ej. contraseña actual incorrecta) responden 400, nunca 401: el front
   trata todo 401 como sesión vencida y refresca.
 - Los tests de integración comparten helpers en `src/services/__tests__/tableHelpers.js`
-  (`createUser`, `startTable`, `playToEnd`, `fakeSocket`, `waitFor`). Torneos: `tournament.test.js`; revancha:
-  `rematch.test.js`.
+  (`createUser` crea usuarios con email verificado, `startTable`, `playToEnd`, `fakeSocket`, `waitFor` hasta 15 s).
+  Torneos: `tournament.test.js`; revancha: `rematch.test.js`.
