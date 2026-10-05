@@ -31,6 +31,7 @@ export function toPublicRoom(room) {
     },
     seats: room.seats.map((s) => ({ userId: String(s.userId), username: s.username })),
     status: room.status,
+    cancelReason: room.cancelReason || null,
     matchId: room.matchId ? String(room.matchId) : null,
     tournamentId: room.tournamentId ? String(room.tournamentId) : null,
     rematchOf: room.rematchOf ? String(room.rematchOf) : null,
@@ -302,6 +303,27 @@ export async function cancelRoom(user, roomId) {
   notifyRoom(room);
   await notifyLobby();
   return toPublicRoom(room);
+}
+
+/**
+ * P6: cancela las salas que siguen en espera sin rival después de ROOM_WAITING_TTL_MINUTES.
+ * Mientras esperan no hay fichas bloqueadas, así que no hay nada que devolver. Devuelve cuántas venció.
+ */
+export async function expireWaitingRooms(now = new Date()) {
+  const limit = new Date(now.getTime() - env.roomWaitingTtlMinutes * 60 * 1000);
+  const stale = await Room.find({ status: 'waiting', createdAt: { $lte: limit } }).select('_id').lean();
+  let expired = 0;
+  let publicChanged = false;
+  for (const { _id } of stale) {
+    // Condicionado a 'waiting': si justo entró un rival, no se toca
+    const room = await Room.findOneAndUpdate({ _id, status: 'waiting' }, { status: 'cancelled', cancelReason: 'expired' }, { new: true });
+    if (!room) continue;
+    expired += 1;
+    if (!room.config.isPrivate) publicChanged = true;
+    notifyRoom(room);
+  }
+  if (publicChanged) await notifyLobby();
+  return expired;
 }
 
 /** Sala visible para un jugador sentado en ella (para la mesa y las reconexiones). */

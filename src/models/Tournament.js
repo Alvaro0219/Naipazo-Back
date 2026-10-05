@@ -39,6 +39,8 @@ const TournamentSchema = new mongoose.Schema({
   },
   entrants: { type: [EntrantSchema], default: [] },
   status: { type: String, enum: TOURNAMENT_STATUSES, default: 'waiting', index: true },
+  // P6: por qué se canceló (null = lo canceló el anfitrión o un reinicio)
+  cancelReason: { type: String, enum: ['expired', null], default: null },
   bracket: { type: [BracketMatchSchema], default: [] },
   winnerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   prize: { type: Number, default: 0, validate: integer },

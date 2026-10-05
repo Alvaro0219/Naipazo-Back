@@ -37,6 +37,22 @@ export const registerLimiter = buildLimiter({
   message: 'Se crearon demasiadas cuentas desde esta conexión hoy. Probá de nuevo mañana.'
 });
 
+// P6: buscar o usar códigos de sala. Por IP (antes de autenticar) y por usuario, para impedir adivinarlos
+export const roomCodeIpLimiter = buildLimiter({
+  windowMs: 10 * 60 * 1000,
+  max: 30,
+  message: 'Demasiados intentos con códigos de sala. Esperá unos minutos.'
+});
+
+export const roomCodeUserLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `user:${req.user.id}`,
+  message: { success: false, error: { message: 'Demasiados intentos con códigos de sala. Esperá unos minutos.', code: 'RATE_LIMITED' } }
+});
+
 // Crear / unirse a salas
 export const roomLimiter = buildLimiter({
   windowMs: 60 * 1000,

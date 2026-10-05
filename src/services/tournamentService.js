@@ -60,6 +60,7 @@ export function toPublicTournament(t) {
       eliminated: Boolean(e.eliminated)
     })),
     status: t.status,
+    cancelReason: t.cancelReason || null,
     pot,
     prize: t.status === 'finished' ? t.prize : computePrize(pot),
     bracket: (t.bracket || []).map((m) => ({
@@ -255,6 +256,29 @@ export async function cancelTournament(user, tournamentId) {
   notifyTournament(cancelled);
   await notifyLobby();
   return toPublicTournament(cancelled);
+}
+
+/**
+ * P6: cancela los torneos que no completaron el cupo en TOURNAMENT_WAITING_TTL_MINUTES y devuelve
+ * todas las inscripciones (settleTournament es idempotente). Devuelve cuántos venció.
+ */
+export async function expireWaitingTournaments(now = new Date()) {
+  const limit = new Date(now.getTime() - env.tournamentWaitingTtlMinutes * 60 * 1000);
+  const stale = await Tournament.find({ status: 'waiting', createdAt: { $lte: limit } }).select('_id').lean();
+  let expired = 0;
+  for (const { _id } of stale) {
+    const cancelled = await Tournament.findOneAndUpdate(
+      { _id, status: 'waiting' },
+      { status: 'cancelled', cancelReason: 'expired', settled: false, endedAt: now },
+      { new: true }
+    );
+    if (!cancelled) continue;
+    expired += 1;
+    await settleTournament(cancelled._id);
+    notifyTournament(cancelled);
+  }
+  if (expired) await notifyLobby();
+  return expired;
 }
 
 // ─── Desarrollo del torneo ────────────────────────────────
