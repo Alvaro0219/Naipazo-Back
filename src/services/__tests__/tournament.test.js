@@ -243,4 +243,35 @@ describe.skipIf(!hasTestDb)('torneos (integración)', () => {
       for (const p of players) expect(await balanceOf(p.id)).toBe(1000);
     });
   });
+  describe('conexiones', () => {
+    // Como en la app: cada jugador tiene UN socket para todo el torneo y entra a cada mesa con room:join
+    // (a veces dos veces seguidas: al reconectar y al montar la mesa). Nunca debe aparecer SESSION_REPLACED.
+    it.each([4, 8])('torneo de %i con un socket por jugador: nunca se reemplaza la sesión', async (size) => {
+      const { players, tournamentId } = await fullTournament({ size, buyIn: 0 });
+      const sockets = Object.fromEntries(players.map((p) => [p.id, fakeSocket('sock-' + p.id)]));
+      const played = new Set();
+      for (let guard = 0; guard < size; guard++) {
+        const t = await Tournament.findById(tournamentId).lean();
+        if (t.status === 'finished') break;
+        let next;
+        await waitFor(async () => {
+          const fresh = await Tournament.findById(tournamentId).lean();
+          next = fresh.bracket.find((m) => m.status === 'playing' && !played.has(String(m.matchId)) && matchService.getRuntime(m.matchId));
+          return next || fresh.status === 'finished';
+        });
+        if (!next) break;
+        const matchId = String(next.matchId);
+        played.add(matchId);
+        for (const playerId of next.players) {
+          await matchService.attachSocket(matchId, String(playerId), sockets[playerId]);
+          await matchService.attachSocket(matchId, String(playerId), sockets[playerId]); // room:join repetido
+        }
+        await playToEnd(matchId, size + played.size);
+      }
+      await waitFor(async () => (await Tournament.findById(tournamentId).lean()).status === 'finished');
+      expect(played.size).toBe(size - 1);
+      const replaced = emissions.filter((e) => e.event === 'game:error' && e.data?.code === 'SESSION_REPLACED');
+      expect(replaced).toEqual([]);
+    });
+  });
 });

@@ -346,6 +346,7 @@ export async function attachSocket(matchId, userId, socket) {
 
   const previous = rt.sockets.get(userId);
   if (previous && previous !== socket.id) {
+    console.warn(`[SESSION_REPLACED] usuario ${userId} partida ${rt.matchId}: socket ${previous} -> ${socket.id}`);
     // Una sola conexión de juego por jugador: la nueva pestaña reemplaza a la anterior
     emitter.toSocket(previous, 'game:error', {
       code: 'SESSION_REPLACED',
