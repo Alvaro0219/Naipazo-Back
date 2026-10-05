@@ -11,6 +11,11 @@ export const listUsers = asyncHandler(async (req, res) => {
   return ok(res, buildPaginatedResponse(items, total, { page, limit }));
 });
 
+export const chipFlows = asyncHandler(async (req, res) => {
+  const items = await adminService.chipFlows(req.validated);
+  return ok(res, { items });
+});
+
 export const setUserStatus = asyncHandler(async (req, res) => {
   const user = await adminService.setUserActive(req.user.id, req.params.id, req.validated.isActive);
   return ok(res, { user });

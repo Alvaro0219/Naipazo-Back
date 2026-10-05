@@ -17,6 +17,11 @@ export const changePasswordSchema = Joi.object({
   newPassword: Joi.string().min(8).max(72).required().label('La contraseña nueva')
 });
 
+export const chipFlowsQuerySchema = Joi.object({
+  days: Joi.number().integer().min(1).max(365).default(30).label('Los días'),
+  minMatches: Joi.number().integer().min(1).max(100).default(3).label('Las partidas mínimas')
+});
+
 export const adminUsersQuerySchema = Joi.object({
   search: Joi.string().trim().max(100).allow(''),
   page: Joi.number().integer().min(1),

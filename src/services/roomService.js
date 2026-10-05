@@ -3,6 +3,7 @@ import { Match } from '../models/Match.js';
 import { ACTIVE_ROOM_STATUSES, Room } from '../models/Room.js';
 import { Tournament } from '../models/Tournament.js';
 import * as emitter from '../sockets/emitter.js';
+import { env } from '../config/env.js';
 import { AppError } from '../utils/AppError.js';
 import { runInTransaction } from '../utils/transaction.js';
 import { notifyBalances } from './betService.js';
@@ -84,6 +85,11 @@ export async function createRoom(user, { uuid, targetPoints, bet, isPrivate = fa
   if (existing) return toPublicRoom(existing);
 
   await assertUserIsFree(user.id);
+  // P5: tope propio en salas privadas (evita pasar fichas entre cuentas)
+  const privateMax = Math.min(env.privateMaxBet, env.maxBet);
+  if (isPrivate && bet > privateMax) {
+    throw new AppError(`En salas privadas la apuesta máxima es de ${privateMax} fichas`, 400, 'PRIVATE_BET_TOO_HIGH');
+  }
   // Con apuesta: solo se verifica el saldo; las fichas se bloquean cuando se completa la mesa
   if (bet > 0 && (await getBalance(user.id)) < bet) {
     throw new AppError('No tenés fichas suficientes para esa apuesta', 400, 'INSUFFICIENT_BALANCE');
@@ -166,7 +172,7 @@ async function createMatchForRoom(room, session, { onInsufficient, tournamentId 
   const bet = room.config.bet || 0;
   const [match] = await Match.create([{
     roomId: room._id,
-    config: { targetPoints: room.config.targetPoints, withFlor: room.config.withFlor, bet },
+    config: { targetPoints: room.config.targetPoints, withFlor: room.config.withFlor, isPrivate: Boolean(room.config.isPrivate), bet },
     players: room.seats.map((s, seat) => ({
       userId: s.userId, username: s.username, seat, team: seat % 2, betLocked: bet
     })),
@@ -221,7 +227,9 @@ export async function createRematchRoom(previousRoomId, players) {
 
   const { room, match } = await createPlayingRoom({
     hostId: players[0].id,
-    config: { targetPoints: previous.config.targetPoints, withFlor: false, bet: previous.config.bet, maxPlayers: 2 },
+    config: {
+      targetPoints: previous.config.targetPoints, withFlor: false, isPrivate: Boolean(previous.config.isPrivate), bet: previous.config.bet, maxPlayers: 2
+    },
     seats: players.map((p) => ({ userId: p.id, username: p.username })),
     rematchOf: previous._id,
     uuid: randomUUID()

@@ -14,6 +14,8 @@ const MatchSchema = new mongoose.Schema({
   config: {
     targetPoints: { type: Number, enum: [15, 30], required: true },
     withFlor: { type: Boolean, default: false },
+    // P5: las partidas de salas privadas no cuentan para el ranking ni las estadísticas
+    isPrivate: { type: Boolean, default: false },
     bet: { type: Number, default: 0 }
   },
   players: { type: [MatchPlayerSchema], required: true },

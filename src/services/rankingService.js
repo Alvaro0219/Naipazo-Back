@@ -48,6 +48,9 @@ export async function getRanking({ by = 'won', period = 'all' }, { skip, limit }
     if (by === 'chips') {
       ({ rows, total } = await paginate(LedgerEntry, [
         { $match: { type: { $in: BET_TYPES }, createdAt: { $gte: since } } },
+        // Sin las apuestas de salas privadas (P5)
+        { $lookup: { from: 'matches', localField: 'refId', foreignField: '_id', as: 'match' } },
+        { $match: { 'match.config.isPrivate': { $ne: true } } },
         { $group: { _id: '$userId', chips: { $sum: '$amount' } } },
         { $match: { chips: { $gt: 0 } } },
         ...withActiveUser,
@@ -55,7 +58,7 @@ export async function getRanking({ by = 'won', period = 'all' }, { skip, limit }
       ], { skip, limit }));
     } else {
       ({ rows, total } = await paginate(Match, [
-        { $match: { status: 'finished', endedAt: { $gte: since } } },
+        { $match: { status: 'finished', endedAt: { $gte: since }, 'config.isPrivate': { $ne: true } } },
         { $unwind: '$players' },
         {
           $group: {

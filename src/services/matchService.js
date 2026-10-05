@@ -57,6 +57,7 @@ export function startMatch({ match, room }) {
     roomId: String(room._id),
     roomCode: room.code,
     bet: match.config.bet || 0,
+    isPrivate: Boolean(match.config.isPrivate),
     tournamentId: match.tournamentId ? String(match.tournamentId) : null,
     round: match.round ?? null,
     players,
@@ -233,7 +234,8 @@ async function finishMatch(rt) {
     console.error(`No se pudo pagar la apuesta de la partida ${rt.matchId}:`, err);
   }
 
-  await User.bulkWrite(state.players.map((p) => {
+  // Las salas privadas quedan en el historial pero no suman estadísticas (que alimentan el ranking)
+  if (!rt.isPrivate) await User.bulkWrite(state.players.map((p) => {
     const won = p.team === state.winnerTeam;
     const inc = { 'stats.played': 1, [won ? 'stats.won' : 'stats.lost']: 1 };
     if (p.id === rt.abandonedBy) inc['stats.abandoned'] = 1;
