@@ -32,7 +32,21 @@ const schema = Joi.object({
   TURN_TIMEOUT_SECONDS: Joi.number().integer().min(5).default(20),
   RECONNECT_GRACE_SECONDS: Joi.number().integer().min(5).default(60),
   REMATCH_WINDOW_SECONDS: Joi.number().integer().min(5).default(60),
-  TOURNAMENT_NEXT_MATCH_SECONDS: Joi.number().integer().min(0).default(10)
+  TOURNAMENT_NEXT_MATCH_SECONDS: Joi.number().integer().min(0).default(10),
+
+  // Cuentas (P4): sin EMAIL_API_KEY los emails se escriben en la consola
+  EMAIL_API_KEY: Joi.string().allow('').default(''),
+  EMAIL_FROM: Joi.string().allow('').default('Naipazo <no-responder@naipazo.local>'),
+  APP_URL: Joi.string().uri({ scheme: ['http', 'https'] }).default('http://localhost:5173'),
+  REQUIRE_EMAIL_VERIFICATION: Joi.boolean(),
+
+  // Integridad de fichas (P5)
+  REGISTER_MAX_PER_IP_PER_DAY: Joi.number().integer().min(1).default(10),
+  PRIVATE_MAX_BET: Joi.number().integer().min(1).default(1000),
+
+  // Vencimientos (P6)
+  ROOM_WAITING_TTL_MINUTES: Joi.number().integer().min(1).default(10),
+  TOURNAMENT_WAITING_TTL_MINUTES: Joi.number().integer().min(1).default(30)
 }).unknown(true);
 
 const { error, value: parsed } = schema.validate(process.env, {
@@ -72,5 +86,17 @@ export const env = {
   turnTimeoutSeconds: toInt(parsed.TURN_TIMEOUT_SECONDS, 20),
   reconnectGraceSeconds: toInt(parsed.RECONNECT_GRACE_SECONDS, 60),
   rematchWindowSeconds: toInt(parsed.REMATCH_WINDOW_SECONDS, 60),
-  tournamentNextMatchSeconds: toInt(parsed.TOURNAMENT_NEXT_MATCH_SECONDS, 10)
+  tournamentNextMatchSeconds: toInt(parsed.TOURNAMENT_NEXT_MATCH_SECONDS, 10),
+
+  emailApiKey: parsed.EMAIL_API_KEY || '',
+  emailFrom: parsed.EMAIL_FROM || 'Naipazo <no-responder@naipazo.local>',
+  appUrl: (parsed.APP_URL || 'http://localhost:5173').replace(/\/$/, ''),
+  // Por defecto: obligatoria en producción, opcional en desarrollo y tests
+  requireEmailVerification: parsed.REQUIRE_EMAIL_VERIFICATION ?? parsed.NODE_ENV === 'production',
+
+  registerMaxPerIpPerDay: toInt(parsed.REGISTER_MAX_PER_IP_PER_DAY, 10),
+  privateMaxBet: toInt(parsed.PRIVATE_MAX_BET, 1000),
+
+  roomWaitingTtlMinutes: toInt(parsed.ROOM_WAITING_TTL_MINUTES, 10),
+  tournamentWaitingTtlMinutes: toInt(parsed.TOURNAMENT_WAITING_TTL_MINUTES, 30)
 };

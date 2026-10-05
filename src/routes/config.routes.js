@@ -13,7 +13,9 @@ router.get('/', (req, res) => ok(res, {
   turnTimeoutSeconds: env.turnTimeoutSeconds,
   reconnectGraceSeconds: env.reconnectGraceSeconds,
   rematchWindowSeconds: env.rematchWindowSeconds,
-  tournamentSizes: [4, 8]
+  tournamentSizes: [4, 8],
+  privateMaxBet: Math.min(env.privateMaxBet, env.maxBet),
+  requireEmailVerification: env.requireEmailVerification
 }));
 
 export default router;

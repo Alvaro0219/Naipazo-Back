@@ -111,6 +111,12 @@ export async function claimDailyGrantIfDue(userId, now = new Date()) {
   const amount = env.dailyGrantAmount;
   if (amount <= 0) return { granted: false, amount: 0, nextGrantAt };
 
+  // P4: con la verificación obligatoria, solo las cuentas con email verificado reciben fichas
+  if (env.requireEmailVerification) {
+    const user = await User.findById(userId).select('emailVerified').lean();
+    if (!user?.emailVerified) return { granted: false, amount, nextGrantAt, requiresVerification: true };
+  }
+
   const idempotencyKey = `daily:${userId}:${today}`;
   const result = await execute((session) => applyMovement({
     userId,

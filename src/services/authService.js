@@ -4,6 +4,7 @@ import { User } from '../models/User.js';
 import { AppError } from '../utils/AppError.js';
 import { issueTokens, verifyRefreshToken } from '../utils/tokens.js';
 import { isReservedUsername, isValidUsernameFormat, normalizeUsername } from '../utils/username.js';
+import { startEmailVerification } from './accountService.js';
 import { claimDailyGrantIfDue } from './walletService.js';
 
 // Hash fijo para comparar cuando el usuario no existe: iguala los tiempos de respuesta
@@ -73,6 +74,7 @@ export async function register({ username, email, password }) {
     throw err;
   }
 
+  await startEmailVerification(user);
   return buildSession(user);
 }
 

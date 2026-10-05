@@ -30,6 +30,14 @@ export const registerSchema = Joi.object({
   confirmAdult: mustAccept('Tenés que declarar que sos mayor de 18 años')
 });
 
+// Tokens de un solo uso que llegan por email (64 caracteres hexadecimales)
+const emailToken = Joi.string().trim().max(128).required().label('El enlace')
+  .messages({ 'any.required': 'El enlace está incompleto' });
+
+export const verifyEmailSchema = Joi.object({ token: emailToken });
+export const forgotPasswordSchema = Joi.object({ email: email.required() });
+export const resetPasswordSchema = Joi.object({ token: emailToken, password: password.required() });
+
 export const loginSchema = Joi.object({
   identifier: Joi.string().trim().min(3).max(254).required().label('El email o nombre de usuario'),
   password: Joi.string().max(72).required().label('La contraseña')

@@ -10,7 +10,7 @@ let seq = 0;
 export async function createUser({ chips = false, prefix = 'mesa' } = {}) {
   seq += 1;
   const doc = await User.create({
-    username: `${prefix}${seq}`, email: `${prefix}${seq}@test.com`, passwordHash: 'x', acceptedTermsAt: new Date()
+    username: `${prefix}${seq}`, email: `${prefix}${seq}@test.com`, passwordHash: 'x', acceptedTermsAt: new Date(), emailVerified: true
   });
   if (chips) await claimDailyGrantIfDue(doc._id); // 1000 fichas
   return { id: String(doc._id), username: doc.username };
