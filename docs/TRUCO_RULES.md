@@ -72,7 +72,7 @@ cambiaron por consulta.
 |---|---|
 | A 15 puntos: lo que le falta al líder del marcador para llegar a 15. | scoring, engine |
 | A 30 puntos, líder con menos de 15 (malas): lo que le falta para 15. | scoring, engine |
-| A 30 puntos, líder con 15 o más: lo que le falta para 30. Con el líder en exactamente 15 vale 15 (si contara hasta 15 valdría 0). | scoring, engine |
+| A 30 puntos, líder con 15 o más: lo que le falta para 30. Con el líder en exactamente 15 (último punto de las malas) vale 15: ya completó las malas, así que cuenta hasta 30. | scoring (14, 15 y 16 puntos), engine |
 
 ## Ir al mazo
 
@@ -88,7 +88,7 @@ cambiaron por consulta.
 | Regla | Test |
 |---|---|
 | Gana el primero en llegar a 15/30, **incluso a mitad de una mano** (por ejemplo, con un envido). El marcador no pasa del objetivo. | engine, simulation |
-| A 30 puntos el marcador se muestra en malas (0–15) y buenas (16–30). | scoring |
+| A 30 puntos el marcador se muestra en malas (0–15) y buenas (16–30). **Con 15 justos se sigue en malas** **[elegida]**. Lo decide una sola función, `scoring.js#scoreSection` (constante `MALAS_LAST_POINT`); el front recibe `scoreSections` en el estado proyectado y no recalcula la frontera. | scoring (14, 15 y 16 puntos) |
 
 ## Tiempo y abandono (los dispara `matchService`)
 

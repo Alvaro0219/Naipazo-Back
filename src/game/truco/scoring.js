@@ -1,17 +1,27 @@
 /**
- * Valor de la falta envido: lo que le falta al líder del marcador para ganar.
- * A 30 puntos, si el líder está en malas (menos de 15) se cuenta hasta 15; si no, hasta 30.
+ * Último punto de las malas en partidas a 30 (*Decisión del dueño*): con 15 se sigue en malas;
+ * las buenas empiezan en 16.
+ */
+export const MALAS_LAST_POINT = 15;
+
+/**
+ * Única fuente de verdad de la frontera entre malas y buenas: 'malas' (0–15), 'buenas' (16–30) o null si la
+ * partida no es a 30. El front la recibe en el estado proyectado (scoreSections) y no la recalcula.
+ */
+export function scoreSection(points, targetPoints) {
+  if (targetPoints !== 30) return null;
+  return points <= MALAS_LAST_POINT ? 'malas' : 'buenas';
+}
+
+/**
+ * Valor de la falta envido: lo que le falta al líder del marcador para terminar su tramo.
+ * A 30 puntos, con el líder en malas se cuenta hasta el final de las malas (15); si el líder ya completó
+ * las malas (15 justos, todavía en malas) o está en buenas, se cuenta hasta 30. A 15 puntos, hasta 15.
  */
 export function faltaEnvidoPoints(score, targetPoints) {
   const leader = Math.max(...score);
-  if (targetPoints === 30 && leader < 15) return 15 - leader;
+  if (scoreSection(leader, targetPoints) === 'malas' && leader < MALAS_LAST_POINT) return MALAS_LAST_POINT - leader;
   return Math.max(1, targetPoints - leader);
-}
-
-/** A 30 puntos el marcador se divide en malas (0–15) y buenas (16–30). */
-export function scoreSection(points, targetPoints) {
-  if (targetPoints !== 30) return null;
-  return points > 15 ? 'buenas' : 'malas';
 }
 
 /**
