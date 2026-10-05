@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Backend de **Truco Online** (Fase 1: fichas virtuales). El frontend vive en un repo hermano: `../truco-front`.
 La especificación funcional completa está en `../PROYECTO_TRUCO_ONLINE.md` (modelo de datos, reglas de truco,
-eventos de Socket.IO, hitos M0–M7). La arquitectura base sale de la skill `fullstack-scaffold`
+eventos de Socket.IO, torneos, hitos M0–M8). La arquitectura base sale de la skill `fullstack-scaffold`
 (`~/.claude/skills/fullstack-scaffold/backend-architecture.md`); no se aparta de ella salvo en las extensiones
 que el documento del proyecto lista en su sección 3.2 (`socket.io`, `vitest`, `src/game/`, `src/sockets/`).
 
@@ -82,7 +82,9 @@ Corren en serie (`fileParallelism: false`) contra Atlas, por eso tardan ~30 s.
 - Pagos y reembolsos de apuestas: solo `services/betService.js` (`settleMatchBets`, idempotente; marca
   `Match.betsSettled`). `matchService.recoverOnStartup` cancela partidas `playing` y liquida pendientes.
 - Timers en `matchService` (`settings.turnTimeoutMs`, `reconnectGraceMs`, `nextHandDelayMs`, ajustables
-  en tests): el de turno se recalcula en cada `publish` y se pausa si quien actúa está desconectado;
+  en tests): el de turno es el reloj de la **decisión**: `publish` lo reinicia solo con eventos nuevos del motor;
+  entrar a la mesa o desconectarse (`publish(rt, [], { keepClock: true })`) no lo reinicia. Se pausa si quien
+  actúa está desconectado y retoma con `rt.turnRemainingMs` (por defecto 20 s);
   la gracia arranca en `detachSocket` (y al crear la partida) y termina en `endByAbandon`.
 - `matchService` guarda las partidas activas en un `Map` en memoria (una sola instancia). El motor es
   síncrono: el estado se actualiza antes de cualquier `await`, así que no hay carreras entre acciones.
@@ -96,11 +98,37 @@ Corren en serie (`fileParallelism: false`) contra Atlas, por eso tardan ~30 s.
 - Para probar con dos jugadores en una máquina: segundo navegador en `http://p2.localhost:5173`
   (ya está en `CORS_ORIGINS` del `.env` de desarrollo). Credenciales de prueba en `test-users.local.md`.
 
+## Revancha y torneos (M7)
+
+- **Una sola cosa a la vez:** `roomService.assertUserIsFree` rechaza crear/unirse a salas o torneos si el usuario
+  tiene una sala en espera o en juego, o sigue vivo en un torneo (`entrants.eliminated: false`).
+- `roomService.createMatchForRoom` es el único lugar que crea un `Match` y bloquea apuestas; lo usan
+  `joinRoom`, `createRematchRoom` (revancha: sala nueva con `rematchOf`) y `createTournamentRoom` (sala de
+  torneo, arranca en `playing`, `bet: 0`, `uuid = tournament:{id}:{ronda}:{llave}` → idempotente).
+- **Revancha** (`services/rematchService.js`): el estado vive en memoria con la partida terminada (TTL de
+  `matchService`). `game:rematch` pide o acepta; `game:rematch:decline` la cierra; vence a los
+  `REMATCH_WINDOW_SECONDS`. No hay revancha en partidas de torneo.
+- **Torneos** (`services/tournamentService.js`, modelo `Tournament`, cuadro puro en `utils/bracket.js`):
+  la inscripción se cobra al anotarse (`TOURNAMENT_ENTRY`, clave por `entryId` para permitir salir y volver);
+  al completarse el cupo, `startTournament` sortea (Fisher-Yates con `crypto.randomInt`) y arranca la primera
+  ronda. `matchService.onMatchFinished` (registro de listeners, evita el ciclo de imports) avisa el fin de cada
+  partida; el ganador avanza y la llave siguiente arranca tras `TOURNAMENT_NEXT_MATCH_SECONDS`
+  (`tournamentService.settings.nextMatchDelayMs`, 0 en tests). Premio = `buyIn × size` menos comisión
+  (`TOURNAMENT_PRIZE`, una vez por torneo). `settleTournament` es idempotente; al reiniciar, los torneos en juego
+  se cancelan y se devuelven todas las inscripciones (`tournamentService.recoverOnStartup`, en `app.js`).
+- Eventos nuevos: `lobby:tournaments`, `tournament:update` (room `tournament:{id}` y canal de cada inscripto),
+  `tournament:match` (al usuario: su partida está lista), `game:rematch`.
+
+## Salas privadas
+
+- `Room.config.isPrivate`: la sala no sale en `lobby:rooms` ni en `GET /api/rooms` (filtro `config.isPrivate: { $ne: true }` en `roomService`) y no dispara `notifyLobby`.
+- Se entra solo con el código de 6 caracteres: `GET /api/rooms/code/:code` y `POST /api/rooms/join-by-code`. `joinRoom(user, id)` rechaza las privadas con 404 salvo `{ viaCode: true }`: conocer el id no alcanza.
+
 ## Hitos
 
-M0–M6 hechos (scaffold, auth, billetera, motor, salas + mesa, apuestas + timers + abandono, historial +
-ranking + perfil + admin). Próximo: M7 — despliegue (Railway + Cloudflare Pages + Atlas, `deployment-guide.md`
-de la skill; una sola instancia del back).
+M0–M7 hechos (scaffold, auth, billetera, motor, salas + mesa, apuestas + timers + abandono, historial +
+ranking + perfil + admin, revancha + PWA + torneos). Próximo: M8 — despliegue (Railway + Cloudflare Pages +
+Atlas, `deployment-guide.md` de la skill; una sola instancia del back).
 
 ## Historial y privacidad
 
@@ -111,4 +139,5 @@ de la skill; una sola instancia del back).
 - Errores que no son de sesión (ej. contraseña actual incorrecta) responden 400, nunca 401: el front
   trata todo 401 como sesión vencida y refresca.
 - Los tests de integración comparten helpers en `src/services/__tests__/tableHelpers.js`
-  (`createUser`, `startTable`, `playToEnd`, `fakeSocket`, `waitFor`).
+  (`createUser`, `startTable`, `playToEnd`, `fakeSocket`, `waitFor`). Torneos: `tournament.test.js`; revancha:
+  `rematch.test.js`.

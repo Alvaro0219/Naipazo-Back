@@ -19,6 +19,16 @@ export const createRoom = asyncHandler(async (req, res) => {
   return ok(res, { room }, 201);
 });
 
+export const getRoomByCode = asyncHandler(async (req, res) => {
+  const room = await roomService.getRoomByCode(req.validated.code);
+  return ok(res, { room });
+});
+
+export const joinRoomByCode = asyncHandler(async (req, res) => {
+  const room = await roomService.joinRoomByCode(req.user, req.validated.code);
+  return ok(res, { room });
+});
+
 export const joinRoom = asyncHandler(async (req, res) => {
   const room = await roomService.joinRoom(req.user, req.validated.id);
   return ok(res, { room });

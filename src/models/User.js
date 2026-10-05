@@ -8,7 +8,9 @@ const StatsSchema = new mongoose.Schema({
   won: { type: Number, default: 0, validate: integer },
   lost: { type: Number, default: 0, validate: integer },
   abandoned: { type: Number, default: 0, validate: integer },
-  chipsWon: { type: Number, default: 0, validate: integer }
+  chipsWon: { type: Number, default: 0, validate: integer },
+  tournamentsPlayed: { type: Number, default: 0, validate: integer },
+  tournamentsWon: { type: Number, default: 0, validate: integer }
 }, { _id: false });
 
 const UserSchema = new mongoose.Schema({

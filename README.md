@@ -120,7 +120,7 @@ Una sola conexión de juego por jugador: si abre la mesa en otra pestaña, la an
   menos `HOUSE_RATE` (`BET_PAYOUT`). La liquidación vive en `betService` y es idempotente; si el server
   se cae a mitad de camino, `Match.betsSettled=false` y se completa al arrancar.
 - **Turno:** `TURN_TIMEOUT_SECONDS` por decisión. Al vencer: con un canto pendiente es "no quiero"; si
-  había que jugar, se pierde la mano. El timer se pausa si quien debe actuar está desconectado.
+  había que jugar, se pierde la mano. El timer se pausa si quien debe actuar está desconectado y retoma con el tiempo que le quedaba. Es el reloj de la decisión: volver al lobby y regresar a la mesa no lo reinicia (solo una jugada, canto o reparto nuevo lo hace).
 - **Desconexión:** `RECONNECT_GRACE_SECONDS` para volver (también corre desde que arranca la partida
   hasta que cada jugador abre la mesa). Si no vuelve, pierde por abandono y el rival cobra.
 - **Abandono voluntario** (`game:abandon`): derrota inmediata; suma `stats.abandoned`.

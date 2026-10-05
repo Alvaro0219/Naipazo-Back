@@ -1,5 +1,6 @@
 import { gameActionSchema, matchRefSchema, validateSocketPayload } from '../schemas/socket.schemas.js';
 import * as matchService from '../services/matchService.js';
+import * as rematchService from '../services/rematchService.js';
 import { AppError } from '../utils/AppError.js';
 import { createSocketLimiter, safeHandler } from './safeHandler.js';
 
@@ -17,5 +18,16 @@ export function registerGameHandlers(socket) {
   socket.on('game:abandon', safeHandler(socket, async (payload) => {
     const { matchId } = validateSocketPayload(matchRefSchema, payload);
     await matchService.abandonMatch(socket.user.id, matchId);
+  }));
+
+  // Revancha: pedirla (o aceptarla si el rival ya la pidió) y rechazarla
+  socket.on('game:rematch', safeHandler(socket, async (payload) => {
+    const { matchId } = validateSocketPayload(matchRefSchema, payload);
+    await rematchService.requestRematch(socket.user.id, matchId);
+  }));
+
+  socket.on('game:rematch:decline', safeHandler(socket, async (payload) => {
+    const { matchId } = validateSocketPayload(matchRefSchema, payload);
+    rematchService.declineRematch(socket.user.id, matchId);
   }));
 }

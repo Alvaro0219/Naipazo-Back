@@ -9,6 +9,7 @@ import { env } from './config/env.js';
 import { globalApiLimiter } from './middlewares/rateLimit.js';
 import apiRoutes from './routes/index.js';
 import { recoverOnStartup } from './services/matchService.js';
+import { recoverOnStartup as recoverTournamentsOnStartup } from './services/tournamentService.js';
 import { initSockets } from './sockets/index.js';
 import { AppError } from './utils/AppError.js';
 import { fail } from './utils/response.js';
@@ -73,6 +74,7 @@ export async function startServer() {
 
   // Las partidas en memoria no sobreviven a un reinicio: se cancelan (con reembolso) las que quedaron en juego
   await recoverOnStartup();
+  await recoverTournamentsOnStartup();
 
   // Socket.IO se monta sobre el mismo servidor HTTP
   const server = http.createServer(app);

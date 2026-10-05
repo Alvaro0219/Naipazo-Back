@@ -1,6 +1,9 @@
 import mongoose from 'mongoose';
 
-export const LEDGER_TYPES = ['DAILY_GRANT', 'BET_LOCK', 'BET_PAYOUT', 'BET_REFUND', 'ADMIN_ADJUST'];
+export const LEDGER_TYPES = [
+  'DAILY_GRANT', 'BET_LOCK', 'BET_PAYOUT', 'BET_REFUND', 'ADMIN_ADJUST',
+  'TOURNAMENT_ENTRY', 'TOURNAMENT_PRIZE', 'TOURNAMENT_REFUND'
+];
 
 const integer = { validator: Number.isInteger, message: '{PATH} debe ser un entero' };
 

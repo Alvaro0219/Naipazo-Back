@@ -26,6 +26,8 @@ function toHistoryItem(match, userId) {
     abandonedByMe: match.abandonedBy ? String(match.abandonedBy) === userId : false,
     chipsNet: chips ? chips.net : 0,
     handsPlayed: match.handsPlayed,
+    tournamentId: match.tournamentId ? String(match.tournamentId) : null,
+    round: match.round ?? null,
     startedAt: match.startedAt,
     endedAt: match.endedAt
   };

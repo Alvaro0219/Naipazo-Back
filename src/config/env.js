@@ -29,8 +29,10 @@ const schema = Joi.object({
   MIN_BET: Joi.number().integer().min(1).default(10),
   MAX_BET: Joi.number().integer().min(1).default(10000),
   HOUSE_RATE: Joi.number().min(0).max(1).default(0),
-  TURN_TIMEOUT_SECONDS: Joi.number().integer().min(5).default(30),
-  RECONNECT_GRACE_SECONDS: Joi.number().integer().min(5).default(60)
+  TURN_TIMEOUT_SECONDS: Joi.number().integer().min(5).default(20),
+  RECONNECT_GRACE_SECONDS: Joi.number().integer().min(5).default(60),
+  REMATCH_WINDOW_SECONDS: Joi.number().integer().min(5).default(60),
+  TOURNAMENT_NEXT_MATCH_SECONDS: Joi.number().integer().min(0).default(10)
 }).unknown(true);
 
 const { error, value: parsed } = schema.validate(process.env, {
@@ -67,6 +69,8 @@ export const env = {
   minBet: toInt(parsed.MIN_BET, 10),
   maxBet: toInt(parsed.MAX_BET, 10000),
   houseRate: Number(parsed.HOUSE_RATE) || 0,
-  turnTimeoutSeconds: toInt(parsed.TURN_TIMEOUT_SECONDS, 30),
-  reconnectGraceSeconds: toInt(parsed.RECONNECT_GRACE_SECONDS, 60)
+  turnTimeoutSeconds: toInt(parsed.TURN_TIMEOUT_SECONDS, 20),
+  reconnectGraceSeconds: toInt(parsed.RECONNECT_GRACE_SECONDS, 60),
+  rematchWindowSeconds: toInt(parsed.REMATCH_WINDOW_SECONDS, 60),
+  tournamentNextMatchSeconds: toInt(parsed.TOURNAMENT_NEXT_MATCH_SECONDS, 10)
 };

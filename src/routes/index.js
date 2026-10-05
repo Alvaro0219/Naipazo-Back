@@ -5,6 +5,7 @@ import configRoutes from './config.routes.js';
 import matchRoutes from './matches.routes.js';
 import rankingRoutes from './ranking.routes.js';
 import roomRoutes from './rooms.routes.js';
+import tournamentRoutes from './tournaments.routes.js';
 import userRoutes from './users.routes.js';
 import walletRoutes from './wallet.routes.js';
 
@@ -15,6 +16,7 @@ router.use('/auth', authRoutes);
 router.use('/wallet', walletRoutes);
 router.use('/rooms', roomRoutes);
 router.use('/matches', matchRoutes);
+router.use('/tournaments', tournamentRoutes);
 router.use('/ranking', rankingRoutes);
 router.use('/users', userRoutes);
 router.use('/admin', adminRoutes);

@@ -30,7 +30,9 @@ export function toPublicUser(user) {
       won: user.stats?.won ?? 0,
       lost: user.stats?.lost ?? 0,
       abandoned: user.stats?.abandoned ?? 0,
-      chipsWon: user.stats?.chipsWon ?? 0
+      chipsWon: user.stats?.chipsWon ?? 0,
+      tournamentsPlayed: user.stats?.tournamentsPlayed ?? 0,
+      tournamentsWon: user.stats?.tournamentsWon ?? 0
     },
     createdAt: user.createdAt
   };

@@ -90,6 +90,84 @@ describe.skipIf(!hasTestDb)('salas y partidas (integración)', () => {
     });
   });
 
+  describe('salas privadas', () => {
+    const createPrivate = (host, bet = 0) => roomService.createRoom(host, { uuid: randomUUID(), targetPoints: 15, bet, isPrivate: true });
+
+    it('no aparece en el lobby ni en la lista, y no se ofrece por socket', async () => {
+      const host = await createUser();
+      const other = await createUser();
+      const publicRoom = await roomService.createRoom(other, { uuid: randomUUID(), targetPoints: 15, bet: 0 });
+      const priv = await createPrivate(host);
+      expect(priv.config.isPrivate).toBe(true);
+      expect(priv.status).toBe('waiting');
+
+      expect((await roomService.listLobbyRooms()).map((r) => r.id)).toEqual([publicRoom.id]);
+      const { items, total } = await roomService.listOpenRooms({}, { skip: 0, limit: 50 });
+      expect(items.map((r) => r.id)).toEqual([publicRoom.id]);
+      expect(total).toBe(1);
+      // Crearla no avisa al lobby
+      expect(emissions.filter((e) => e.event === 'lobby:rooms').every((e) => e.data.every((r) => r.id !== priv.id))).toBe(true);
+      // El anfitrión sí la ve como su sala activa (para volver a la mesa)
+      expect((await roomService.getActiveRoom(host.id)).id).toBe(priv.id);
+    });
+
+    it('conocer el id no alcanza: solo se entra con el código', async () => {
+      const [host, guest] = [await createUser(), await createUser()];
+      const priv = await createPrivate(host);
+      await expect(roomService.joinRoom(guest, priv.id)).rejects.toMatchObject({ code: 'NOT_FOUND', status: 404 });
+      expect((await Room.findById(priv.id)).status).toBe('waiting');
+    });
+
+    it('con el código se entra (sin importar mayúsculas) y arranca la partida', async () => {
+      const [host, guest] = [await createUser(), await createUser()];
+      const priv = await createPrivate(host);
+      expect((await roomService.getRoomByCode(priv.code)).id).toBe(priv.id);
+
+      const joined = await roomService.joinRoomByCode(guest, priv.code);
+      expect(joined).toMatchObject({ id: priv.id, status: 'playing' });
+      expect(matchService.getRuntime(joined.matchId)).toBeTruthy();
+    });
+
+    it('un código inexistente, o de una sala que ya empezó, responde 404', async () => {
+      const [host, guest, third] = [await createUser(), await createUser(), await createUser()];
+      await expect(roomService.getRoomByCode('ZZZZZZ')).rejects.toMatchObject({ code: 'ROOM_CODE_NOT_FOUND', status: 404 });
+      await expect(roomService.joinRoomByCode(guest, 'ZZZZZZ')).rejects.toMatchObject({ code: 'ROOM_CODE_NOT_FOUND' });
+
+      const priv = await createPrivate(host);
+      await roomService.joinRoomByCode(guest, priv.code);
+      await expect(roomService.joinRoomByCode(third, priv.code)).rejects.toMatchObject({ code: 'ROOM_CODE_NOT_FOUND' });
+      await expect(roomService.getRoomByCode(priv.code)).rejects.toMatchObject({ code: 'ROOM_CODE_NOT_FOUND' });
+    });
+
+    it('no podés unirte a tu propia sala con el código', async () => {
+      const host = await createUser();
+      const priv = await createPrivate(host);
+      await expect(roomService.joinRoomByCode(host, priv.code)).rejects.toMatchObject({ code: 'CANNOT_JOIN_OWN_ROOM' });
+    });
+
+    it('con apuesta: el monto escrito se bloquea a los dos al entrar, y sin saldo no entra', async () => {
+      const [host, guest, poor] = [await createUser({ chips: true }), await createUser({ chips: true }), await createUser()];
+      const priv = await createPrivate(host, 130); // un monto cualquiera, no de a 500
+      expect(priv.config.bet).toBe(130);
+
+      await expect(roomService.joinRoomByCode(poor, priv.code)).rejects.toMatchObject({ code: 'INSUFFICIENT_BALANCE' });
+      expect((await Room.findById(priv.id)).status).toBe('waiting');
+
+      await roomService.joinRoomByCode(guest, priv.code);
+      expect(await balanceOf(host.id)).toBe(870);
+      expect(await balanceOf(guest.id)).toBe(870);
+      expect(await LedgerEntry.countDocuments({ type: 'BET_LOCK' })).toBe(2);
+    });
+
+    it('el anfitrión puede cancelarla y su código deja de servir', async () => {
+      const host = await createUser();
+      const priv = await createPrivate(host);
+      const cancelled = await roomService.cancelRoom(host, priv.id);
+      expect(cancelled.status).toBe('cancelled');
+      await expect(roomService.joinRoomByCode(await createUser(), priv.code)).rejects.toMatchObject({ code: 'ROOM_CODE_NOT_FOUND' });
+    });
+  });
+
   describe('apuestas', () => {
     it('crear con apuesta verifica el saldo sin bloquear', async () => {
       const poor = await createUser();
@@ -221,6 +299,66 @@ describe.skipIf(!hasTestDb)('salas y partidas (integración)', () => {
       expect(rt.turn).toBeNull();
       await sleep(120);
       expect(rt.state.score).toEqual([0, 0]);
+    });
+
+    it('volver al lobby y regresar a la mesa NO reinicia el reloj del turno', async () => {
+      matchService.settings.turnTimeoutMs = 600;
+      const { matchId, sockets } = await startTable();
+      const rt = matchService.getRuntime(matchId);
+      const actor = rt.state.players[rt.state.hand.turnSeat].id;
+      const deadline = rt.turn.deadline;
+      const timer = rt.turn.timer;
+
+      // El jugador sale de la mesa y vuelve varias veces (el socket sigue conectado: entra con otro id)
+      for (let i = 0; i < 3; i++) {
+        await sleep(60);
+        await matchService.attachSocket(matchId, actor, fakeSocket(`${sockets[actor].id}-vuelta-${i}`));
+      }
+      expect(rt.turn.deadline).toBe(deadline);
+      expect(rt.turn.timer).toBe(timer);
+      const remaining = matchService.buildStateFor(rt, actor).turn.remainingMs;
+      expect(remaining).toBeLessThan(500); // pasó el tiempo de las idas y vueltas, no se regaló
+
+      // Y el tiempo igual vence
+      await waitFor(() => rt.state.score.some((s) => s > 0));
+      expect(emissions).toContainEqual(expect.objectContaining({
+        event: 'game:event', data: expect.objectContaining({ type: 'TURN_TIMEOUT' })
+      }));
+    });
+
+    it('si se desconecta y vuelve, retoma el tiempo que le quedaba (no uno nuevo)', async () => {
+      matchService.settings.turnTimeoutMs = 1000;
+      matchService.settings.reconnectGraceMs = 10000;
+      const { matchId, sockets } = await startTable();
+      const rt = matchService.getRuntime(matchId);
+      const actor = rt.state.players[rt.state.hand.turnSeat].id;
+
+      await sleep(300);
+      matchService.detachSocket(actor, sockets[actor].id);
+      expect(rt.turn).toBeNull();
+      expect(rt.turnRemainingMs).toBeLessThan(800);
+      await sleep(300); // desconectado: el reloj no corre
+
+      await matchService.attachSocket(matchId, actor, fakeSocket('vuelve'));
+      expect(rt.turn).not.toBeNull();
+      const remaining = matchService.buildStateFor(rt, actor).turn.remainingMs;
+      expect(remaining).toBeGreaterThan(300);
+      expect(remaining).toBeLessThan(800); // lo que quedaba (~700 ms), no 1000
+    });
+
+    it('una jugada nueva sí reinicia el reloj completo', async () => {
+      matchService.settings.turnTimeoutMs = 600;
+      const { matchId } = await startTable();
+      const rt = matchService.getRuntime(matchId);
+      const actor = rt.state.players[rt.state.hand.turnSeat].id;
+      await sleep(250);
+      const before = rt.turn.deadline;
+
+      await matchService.handleAction(actor, {
+        matchId, actionId: randomUUID(), type: 'PLAY_CARD', payload: { cardId: rt.state.hand.cards[actor][0] }
+      });
+      expect(rt.turn.deadline).toBeGreaterThan(before + 200);
+      expect(rt.turn.playerIds).not.toContain(actor);
     });
   });
 

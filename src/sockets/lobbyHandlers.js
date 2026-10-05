@@ -1,6 +1,7 @@
-import { roomRefSchema, validateSocketPayload } from '../schemas/socket.schemas.js';
+import { roomRefSchema, tournamentRefSchema, validateSocketPayload } from '../schemas/socket.schemas.js';
 import * as matchService from '../services/matchService.js';
 import * as roomService from '../services/roomService.js';
+import * as tournamentService from '../services/tournamentService.js';
 import { AppError } from '../utils/AppError.js';
 import { rooms } from './emitter.js';
 import { safeHandler } from './safeHandler.js';
@@ -11,6 +12,7 @@ export function registerLobbyHandlers(socket) {
   socket.on('lobby:subscribe', safeHandler(socket, async () => {
     socket.join(rooms.lobby);
     socket.emit('lobby:rooms', await roomService.listLobbyRooms());
+    socket.emit('lobby:tournaments', await tournamentService.listLobbyTournaments());
   }));
 
   socket.on('lobby:unsubscribe', () => socket.leave(rooms.lobby));
@@ -33,5 +35,18 @@ export function registerLobbyHandlers(socket) {
       throw new AppError('No podés salir de una partida en curso', 409, 'MATCH_IN_PROGRESS');
     }
     await roomService.cancelRoom(user, roomId);
+  }));
+
+  // Seguir en vivo el cuadro de un torneo (cualquiera puede mirarlo)
+  socket.on('tournament:subscribe', safeHandler(socket, async (payload) => {
+    const { tournamentId } = validateSocketPayload(tournamentRefSchema, payload);
+    const tournament = await tournamentService.getTournament(tournamentId);
+    socket.join(rooms.tournament(tournamentId));
+    socket.emit('tournament:update', tournament);
+  }));
+
+  socket.on('tournament:unsubscribe', safeHandler(socket, async (payload) => {
+    const { tournamentId } = validateSocketPayload(tournamentRefSchema, payload);
+    socket.leave(rooms.tournament(tournamentId));
   }));
 }

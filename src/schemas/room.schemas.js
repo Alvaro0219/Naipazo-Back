@@ -9,8 +9,17 @@ export const createRoomSchema = Joi.object({
     .messages({ 'any.only': 'La partida tiene que ser a 15 o 30 puntos' }),
   bet: Joi.number().integer().min(0).max(env.maxBet).default(0).label('La apuesta')
     .custom((value, helpers) => (value > 0 && value < env.minBet ? helpers.error('bet.min') : value))
-    .messages({ 'bet.min': `La apuesta mínima es de ${env.minBet} fichas` })
+    .messages({ 'bet.min': `La apuesta mínima es de ${env.minBet} fichas` }),
+  // Sala privada: fuera del lobby, se entra con el código
+  isPrivate: Joi.boolean().default(false).label('Sala privada')
 });
+
+// Los códigos de sala usan este alfabeto (sin 0/O ni 1/I) y 6 caracteres
+const roomCode = Joi.string().trim().uppercase().pattern(/^[A-HJ-NP-Z2-9]{6}$/).required().label('El código')
+  .messages({ 'string.pattern.base': 'El código de la sala tiene 6 letras o números' });
+
+export const roomCodeParamsSchema = Joi.object({ code: roomCode });
+export const joinByCodeSchema = Joi.object({ code: roomCode });
 
 export const roomIdParamsSchema = Joi.object({
   id: objectId.required().label('La sala')

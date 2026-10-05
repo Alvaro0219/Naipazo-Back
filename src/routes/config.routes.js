@@ -11,7 +11,9 @@ router.get('/', (req, res) => ok(res, {
   houseRate: env.houseRate,
   dailyGrantAmount: env.dailyGrantAmount,
   turnTimeoutSeconds: env.turnTimeoutSeconds,
-  reconnectGraceSeconds: env.reconnectGraceSeconds
+  reconnectGraceSeconds: env.reconnectGraceSeconds,
+  rematchWindowSeconds: env.rematchWindowSeconds,
+  tournamentSizes: [4, 8]
 }));
 
 export default router;

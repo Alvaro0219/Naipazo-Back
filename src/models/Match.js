@@ -25,6 +25,9 @@ const MatchSchema = new mongoose.Schema({
   abandonedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   // false mientras haya apuestas bloqueadas sin pagar ni devolver (se reintenta al arrancar el server)
   betsSettled: { type: Boolean, default: true, index: true },
+  // Partidas de torneo: sin apuesta propia (el pozo lo retiene el torneo)
+  tournamentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tournament', default: null, index: true },
+  round: { type: Number, default: null },
   startedAt: { type: Date, required: true },
   endedAt: { type: Date, default: null }
 }, { timestamps: true });

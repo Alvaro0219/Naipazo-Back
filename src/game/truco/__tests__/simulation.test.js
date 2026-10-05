@@ -4,6 +4,8 @@ import { seededRng } from './helpers.js';
 import { simulateMatch } from './simulation.js';
 
 const MATCHES_PER_CONFIG = 300;
+// 300 partidas completas por configuración: es CPU puro y en una máquina cargada pasa los 30 s por defecto
+const SIMULATION_TIMEOUT_MS = 120000;
 
 describe('partidas simuladas entre bots aleatorios', () => {
   it.each([15, 30])('a %i puntos siempre terminan sin errores', (targetPoints) => {
@@ -33,7 +35,7 @@ describe('partidas simuladas entre bots aleatorios', () => {
       expect(state.score[state.winnerTeam]).toBe(targetPoints);
       expect(state.score[1 - state.winnerTeam]).toBeLessThan(targetPoints);
     }
-  });
+  }, SIMULATION_TIMEOUT_MS);
 
   it('es determinístico: mismo mazo y mismas acciones, mismo resultado', () => {
     const a = simulateMatch({ targetPoints: 30, rng: seededRng(42) });

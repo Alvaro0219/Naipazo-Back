@@ -157,6 +157,35 @@ export async function refundBet(matchId, userId, amount, { session = null } = {}
   }), idempotencyKey, session);
 }
 
+// ─── Torneos ──────────────────────────────────────────────
+// La clave de idempotencia usa el id de la inscripción (entryId): salir y volver a inscribirse
+// genera movimientos nuevos, pero reintentar el mismo cobro o devolución no duplica nada.
+
+export async function payTournamentEntry(tournamentId, userId, entryId, amount, { session = null } = {}) {
+  assertPositiveInt(amount);
+  const idempotencyKey = `tentry:${tournamentId}:${entryId}`;
+  return execute(strictMovement({
+    userId, type: 'TOURNAMENT_ENTRY', amount: -amount, refType: 'Tournament', refId: tournamentId, idempotencyKey
+  }), idempotencyKey, session);
+}
+
+export async function refundTournamentEntry(tournamentId, userId, entryId, amount, { session = null } = {}) {
+  assertPositiveInt(amount);
+  const idempotencyKey = `trefund:${tournamentId}:${entryId}`;
+  return execute(strictMovement({
+    userId, type: 'TOURNAMENT_REFUND', amount, refType: 'Tournament', refId: tournamentId, idempotencyKey
+  }), idempotencyKey, session);
+}
+
+/** Premio del campeón: el pozo completo menos la comisión (lo calcula tournamentService). Uno por torneo. */
+export async function payTournamentPrize(tournamentId, winnerId, amount, { session = null } = {}) {
+  assertPositiveInt(amount);
+  const idempotencyKey = `tprize:${tournamentId}`;
+  return execute(strictMovement({
+    userId: winnerId, type: 'TOURNAMENT_PRIZE', amount, refType: 'Tournament', refId: tournamentId, idempotencyKey
+  }), idempotencyKey, session);
+}
+
 // ─── Administración ───────────────────────────────────────
 
 /** Ajuste manual (positivo o negativo). `operationId` lo genera el cliente para idempotencia. */

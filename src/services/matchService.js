@@ -34,6 +34,15 @@ const MAX_REMEMBERED_ACTIONS = 200;
 /** @type {Map<string, object>} matchId -> runtime */
 const runtimes = new Map();
 
+// Quién quiere enterarse cuando termina una partida (torneos). matchService no importa a esos módulos
+// para no armar un ciclo: ellos se registran acá.
+const finishedListeners = [];
+
+/** Registra un callback que recibe { matchId, roomId, tournamentId, round, winnerIds, loserIds }. */
+export function onMatchFinished(listener) {
+  finishedListeners.push(listener);
+}
+
 // ─── Ciclo de vida ────────────────────────────────────────
 
 /** Arranca una partida ya persistida (Match en estado `playing`, apuestas ya bloqueadas). */
@@ -48,6 +57,8 @@ export function startMatch({ match, room }) {
     roomId: String(room._id),
     roomCode: room.code,
     bet: match.config.bet || 0,
+    tournamentId: match.tournamentId ? String(match.tournamentId) : null,
+    round: match.round ?? null,
     players,
     state: createMatchState({
       config: { targetPoints: match.config.targetPoints },
@@ -59,7 +70,8 @@ export function startMatch({ match, room }) {
     recentActionIds: [],
     handLog: null,
     timers: new Set(), // timers sueltos (reparto, limpieza)
-    turn: null, // { timer, deadline }
+    turn: null, // { timer, deadline, playerIds } mientras corre
+    turnRemainingMs: null, // lo que quedaba del turno cuando se pausó por una desconexión
     grace: new Map(), // userId -> { timer, deadline }
     finishing: false,
     finished: false,
@@ -232,23 +244,64 @@ async function finishMatch(rt) {
 
   rt.finished = true;
   rt.finishing = false;
-  emitter.toMatch(rt.matchId, 'game:finished', buildFinishedSummary(rt));
+  const summary = buildFinishedSummary(rt);
+  emitter.toMatch(rt.matchId, 'game:finished', summary);
   schedule(rt, () => runtimes.delete(rt.matchId), settings.finishedTtlMs);
+
+  const loserIds = state.players.filter((p) => p.team !== state.winnerTeam).map((p) => p.id);
+  for (const listener of finishedListeners) {
+    try {
+      listener({ ...summary, roomId: rt.roomId, loserIds });
+    } catch (err) {
+      console.error(`Error en un aviso de fin de la partida ${rt.matchId}:`, err);
+    }
+  }
 }
 
 // ─── Timers ───────────────────────────────────────────────
 
-/** Reinicia el timer de turno para quien tiene que actuar (o lo pausa si está desconectado). */
-function refreshTurnTimer(rt) {
+function stopTurn(rt) {
   if (rt.turn) clearTimeout(rt.turn.timer);
   rt.turn = null;
-  if (rt.finished || rt.finishing || rt.state.phase !== PHASES.PLAYING) return;
+}
 
+function startTurn(rt, actors, ms) {
+  const timer = setTimeout(() => onTurnTimeout(rt), ms);
+  rt.turn = { timer, deadline: Date.now() + ms, playerIds: actors };
+  rt.turnRemainingMs = null;
+}
+
+/**
+ * Timer de turno. El reloj es de la DECISIÓN, no de la conexión:
+ *  - Decisión nueva (carta jugada, canto, respuesta, reparto, vencimiento): arranca completo
+ *    (o queda guardado entero si quien tiene que actuar está desconectado).
+ *  - `keepClock` (alguien entró a la mesa, volvió del lobby o se reconectó; alguien se desconectó): NO lo reinicia.
+ *    Si corre y sigue habiendo conectados, queda como está; si quien actúa se desconecta, se pausa guardando
+ *    lo que quedaba; al volver, sigue desde ahí. Así salir y volver a la mesa no regala tiempo.
+ */
+function refreshTurnTimer(rt, { keepClock = false } = {}) {
   const actors = getActingPlayerIds(rt.state);
-  if (actors.length === 0 || actors.some((id) => !rt.sockets.has(id))) return;
+  if (rt.finished || rt.finishing || rt.state.phase !== PHASES.PLAYING || actors.length === 0) {
+    stopTurn(rt);
+    rt.turnRemainingMs = null;
+    return;
+  }
+  const connected = actors.every((id) => rt.sockets.has(id));
 
-  const timer = setTimeout(() => onTurnTimeout(rt), settings.turnTimeoutMs);
-  rt.turn = { timer, deadline: Date.now() + settings.turnTimeoutMs, playerIds: actors };
+  if (keepClock) {
+    if (rt.turn) {
+      if (connected) return; // sigue corriendo sin tocarlo
+      rt.turnRemainingMs = Math.max(0, rt.turn.deadline - Date.now());
+      stopTurn(rt);
+      return;
+    }
+    if (connected) startTurn(rt, actors, rt.turnRemainingMs ?? settings.turnTimeoutMs);
+    return;
+  }
+
+  stopTurn(rt);
+  if (connected) startTurn(rt, actors, settings.turnTimeoutMs);
+  else rt.turnRemainingMs = settings.turnTimeoutMs;
 }
 
 function startGrace(rt, userId, { announce = true } = {}) {
@@ -314,8 +367,8 @@ export async function attachSocket(matchId, userId, socket) {
     emitter.toMatch(rt.matchId, 'player:reconnected', { playerId: userId });
   }
   rt.everConnected.add(userId);
-  // Puede reanudarse un turno pausado: se reenvía el estado (con el nuevo plazo) a todos
-  publish(rt, []);
+  // Puede reanudarse un turno pausado (con lo que le quedaba): se reenvía el estado a todos
+  publish(rt, [], { keepClock: true });
 }
 
 /** Se desconectó un socket: arranca la gracia de reconexión y se pausa su turno si le tocaba. */
@@ -325,14 +378,15 @@ export function detachSocket(userId, socketId) {
     rt.sockets.delete(userId);
     if (rt.finished || rt.finishing) continue;
     startGrace(rt, userId);
-    publish(rt, []);
+    publish(rt, [], { keepClock: true });
   }
 }
 
 // ─── Proyecciones ─────────────────────────────────────────
 
-function publish(rt, events) {
-  refreshTurnTimer(rt);
+/** `keepClock`: es solo una conexión que cambió, no una decisión nueva (ver refreshTurnTimer). */
+function publish(rt, events, { keepClock = false } = {}) {
+  refreshTurnTimer(rt, { keepClock });
   // Los eventos del motor son públicos (cartas jugadas, cantos, tantos anunciados)
   for (const event of events) {
     emitter.toMatch(rt.matchId, 'game:event', event);
@@ -352,6 +406,7 @@ export function buildStateFor(rt, userId) {
     roomId: rt.roomId,
     roomCode: rt.roomCode,
     bet: rt.bet,
+    tournament: rt.tournamentId ? { id: rt.tournamentId, round: rt.round } : null,
     usernames: Object.fromEntries(rt.players.map((p) => [p.id, p.username])),
     // Se manda el tiempo restante (no la hora) para no depender del reloj del cliente
     turn: rt.turn
@@ -375,7 +430,10 @@ function buildFinishedSummary(rt) {
     score: [...state.score],
     endReason: state.endReason,
     abandonedBy: rt.abandonedBy,
-    chips: rt.chips
+    chips: rt.chips,
+    tournamentId: rt.tournamentId,
+    round: rt.round,
+    rematchAllowed: !rt.tournamentId // las partidas de torneo no tienen revancha
   };
 }
 
@@ -387,7 +445,10 @@ function buildFinishedSummaryFromDoc(match) {
     score: match.score,
     endReason: match.endReason,
     abandonedBy: match.abandonedBy ? String(match.abandonedBy) : null,
-    chips: buildChipsSummary(match)
+    chips: buildChipsSummary(match),
+    tournamentId: match.tournamentId ? String(match.tournamentId) : null,
+    round: match.round ?? null,
+    rematchAllowed: false // la partida ya no está en memoria: la revancha caducó
   };
 }
 
@@ -412,7 +473,7 @@ export async function recoverOnStartup() {
   return { cancelled: interrupted.length, settled };
 }
 
-// ─── Solo tests ───────────────────────────────────────────
+// ─── Consultas (revancha y tests) ─────────────────────────
 
 export function getRuntime(matchId) {
   return runtimes.get(String(matchId));
