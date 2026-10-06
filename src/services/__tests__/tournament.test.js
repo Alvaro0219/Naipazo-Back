@@ -223,7 +223,9 @@ describe.skipIf(!hasTestDb)('torneos (integración)', () => {
       await matchService.abandonMatch(quitter, String(semi.matchId));
       await waitFor(async () => {
         const doc = await Tournament.findById(tournamentId).lean();
-        return doc.bracket.find((m) => m.round === 1).players.map(String).includes(rival);
+        // El avance del ganador y la eliminación del perdedor son dos escrituras: se esperan las dos
+        return doc.bracket.find((m) => m.round === 1).players.map(String).includes(rival)
+          && doc.entrants.find((e) => String(e.userId) === quitter).eliminated;
       });
       const doc = await Tournament.findById(tournamentId).lean();
       expect(String(doc.bracket[0].winnerId)).toBe(rival);

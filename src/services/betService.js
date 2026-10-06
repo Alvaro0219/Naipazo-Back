@@ -17,13 +17,37 @@ export function computePayouts({ players, winnerTeam }, houseRate = env.houseRat
   return winners.map((w) => ({ userId: String(w.userId), amount: share }));
 }
 
+/**
+ * Pagos y devoluciones de una partida terminada.
+ *  - Normal (y 1 vs 1 siempre): el pozo se reparte entre los ganadores (computePayouts).
+ *  - 2 vs 2 con UN solo abandono: quien abandonó pierde su apuesta, su compañero la recupera (BET_REFUND)
+ *    y los rivales se reparten el resto (cada uno cobra 1,5 apuestas, menos comisión).
+ *  - 2 vs 2 con los dos de un equipo abandonando: como una partida normal (cada rival cobra 2 apuestas).
+ */
+export function computeSettlement(match, houseRate = env.houseRate) {
+  const abandoners = (match.abandoners?.length ? match.abandoners : [match.abandonedBy].filter(Boolean)).map(String);
+  if (match.players.length === 4 && match.endReason === 'abandon' && abandoners.length === 1) {
+    const quitter = match.players.find((p) => String(p.userId) === abandoners[0]);
+    const partner = match.players.find((p) => p.team === quitter.team && String(p.userId) !== abandoners[0]);
+    const refunds = partner.betLocked > 0 ? [{ userId: String(partner.userId), amount: partner.betLocked }] : [];
+    const pot = match.players.reduce((sum, p) => sum + (p.betLocked || 0), 0) - (partner.betLocked || 0);
+    if (pot === 0) return { payouts: [], refunds };
+    const net = pot - Math.floor(pot * houseRate);
+    const winners = match.players.filter((p) => p.team !== quitter.team);
+    const share = Math.floor(net / winners.length);
+    return { payouts: winners.map((w) => ({ userId: String(w.userId), amount: share })), refunds };
+  }
+  return { payouts: computePayouts(match, houseRate), refunds: [] };
+}
+
 /** Resumen de fichas por jugador para el cliente: { bet, pot, players: [{ userId, bet, received, net }] }. */
 export function buildChipsSummary(match) {
   const bet = match.config?.bet || 0;
   if (!bet) return null;
   const received = new Map();
   if (match.status === 'finished') {
-    for (const p of computePayouts(match)) received.set(p.userId, p.amount);
+    const { payouts, refunds } = computeSettlement(match);
+    for (const p of [...payouts, ...refunds]) received.set(p.userId, (received.get(p.userId) || 0) + p.amount);
   } else if (match.status === 'cancelled') {
     for (const p of match.players) received.set(String(p.userId), p.betLocked || 0);
   }
@@ -56,9 +80,11 @@ export async function settleMatchBets(matchId) {
   if (!match || match.betsSettled) return match ? buildChipsSummary(match) : null;
 
   if (match.status === 'finished') {
-    for (const { userId, amount } of computePayouts(match)) {
+    const { payouts, refunds } = computeSettlement(match);
+    for (const { userId, amount } of payouts) {
       if (amount > 0) await payoutBet(match._id, userId, amount);
     }
+    for (const { userId, amount } of refunds) await refundBet(match._id, userId, amount);
   } else if (match.status === 'cancelled') {
     for (const p of match.players) {
       if (p.betLocked > 0) await refundBet(match._id, p.userId, p.betLocked);

@@ -50,7 +50,10 @@ const schema = Joi.object({
 
   // Vencimientos (P6)
   ROOM_WAITING_TTL_MINUTES: Joi.number().integer().min(1).default(10),
-  TOURNAMENT_WAITING_TTL_MINUTES: Joi.number().integer().min(1).default(30)
+  TOURNAMENT_WAITING_TTL_MINUTES: Joi.number().integer().min(1).default(30),
+
+  // 2 vs 2 (M8): pausa máxima acumulada por desconexión de cada jugador en una partida
+  MAX_DISCONNECT_PAUSE_SECONDS: Joi.number().integer().min(5).default(120)
 }).unknown(true);
 
 const { error, value: parsed } = schema.validate(process.env, {
@@ -104,5 +107,6 @@ export const env = {
   privateMaxBet: toInt(parsed.PRIVATE_MAX_BET, 1000),
 
   roomWaitingTtlMinutes: toInt(parsed.ROOM_WAITING_TTL_MINUTES, 10),
-  tournamentWaitingTtlMinutes: toInt(parsed.TOURNAMENT_WAITING_TTL_MINUTES, 30)
+  tournamentWaitingTtlMinutes: toInt(parsed.TOURNAMENT_WAITING_TTL_MINUTES, 30),
+  maxDisconnectPauseSeconds: toInt(parsed.MAX_DISCONNECT_PAUSE_SECONDS, 120)
 };

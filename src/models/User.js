@@ -32,7 +32,9 @@ const UserSchema = new mongoose.Schema({
   // Solo se modifica mediante walletService (operaciones atómicas + LedgerEntry)
   balance: { type: Number, default: 0, min: 0, validate: integer },
   lastDailyGrantDate: { type: String, default: null }, // YYYY-MM-DD en APP_TIMEZONE
-  stats: { type: StatsSchema, default: () => ({}) },
+  stats: { type: StatsSchema, default: () => ({}) }, // 1 vs 1 (y torneos)
+  // M8: estadísticas del 2 vs 2, aparte (las de 1 vs 1 no cambian)
+  statsTwoVsTwo: { type: StatsSchema, default: () => ({}) },
   acceptedTermsAt: { type: Date, required: true },
   // Se incrementa para invalidar todos los refresh tokens emitidos (logout, bloqueo)
   tokenVersion: { type: Number, default: 0 }

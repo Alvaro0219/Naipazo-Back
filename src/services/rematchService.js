@@ -4,19 +4,20 @@ import { AppError } from '../utils/AppError.js';
 import * as matchService from './matchService.js';
 import { createRematchRoom } from './roomService.js';
 
-// Revancha al terminar una partida normal (no de torneo). Uno la pide y el otro la acepta pidiéndola
-// también; si nadie acepta en REMATCH_WINDOW_SECONDS, o alguno la rechaza, caduca. Al aceptar se crea una
+// Revancha al terminar una partida normal (no de torneo). Uno la pide y los demás la aceptan pidiéndola
+// también (en 2 vs 2 tienen que aceptar los 4); si nadie acepta en REMATCH_WINDOW_SECONDS, o alguno la rechaza, caduca. Al aceptar se crea una
 // sala nueva con la misma configuración y se bloquean de nuevo las apuestas (roomService.createRematchRoom).
 // El estado vive con la partida terminada en memoria (matchService la guarda unos minutos).
 //
 // Eventos `game:rematch` a la mesa: { matchId, state, by?, roomId?, message? }
-//   requested (by = quien la pidió) | declined (by) | expired | started (roomId) | failed (message)
+//   requested (by = quien la pidió o aceptó, accepted = todos los que ya aceptaron) | declined (by) | expired |
+//   started (roomId) | failed (message)
 
 export const settings = {
   windowMs: env.rematchWindowSeconds * 1000
 };
 
-/** matchId -> { requestedBy, timer, starting } */
+/** matchId -> { accepted: Set<userId>, timer, starting } */
 const pending = new Map();
 
 function finishedRuntime(matchId, userId) {
@@ -50,13 +51,20 @@ export async function requestRematch(userId, matchId) {
       close(rt);
       announce(rt, { state: 'expired' });
     }, settings.windowMs);
-    pending.set(rt.matchId, { requestedBy: userId, timer, starting: false });
-    announce(rt, { state: 'requested', by: userId, expiresInMs: settings.windowMs });
+    pending.set(rt.matchId, { accepted: new Set([userId]), timer, starting: false, expiresAt: Date.now() + settings.windowMs });
+    announce(rt, { state: 'requested', by: userId, accepted: [userId], expiresInMs: settings.windowMs });
     return { state: 'requested' };
   }
-  if (entry.requestedBy === userId || entry.starting) return { state: 'requested' };
+  if (entry.accepted.has(userId) || entry.starting) return { state: 'requested' };
 
-  // Aceptó el otro: arranca la revancha
+  entry.accepted.add(userId);
+  if (entry.accepted.size < rt.players.length) {
+    // 2 vs 2: faltan otros por aceptar
+    announce(rt, { state: 'requested', by: userId, accepted: [...entry.accepted], expiresInMs: Math.max(0, entry.expiresAt - Date.now()) });
+    return { state: 'requested' };
+  }
+
+  // Aceptaron todos: arranca la revancha
   entry.starting = true;
   try {
     const room = await createRematchRoom(rt.roomId, rt.players);

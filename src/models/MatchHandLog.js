@@ -19,6 +19,8 @@ const MatchHandLogSchema = new mongoose.Schema({
   // Eventos del motor que ya se emitieron a ambos jugadores (cartas jugadas, cantos, tantos cantados).
   // Son los únicos que se muestran en el detalle de la partida.
   publicEvents: { type: [mongoose.Schema.Types.Mixed], default: [] },
+  // 2 vs 2: señas entre compañeros (solo auditoría: nunca se exponen)
+  signs: { type: [mongoose.Schema.Types.Mixed], default: [] },
   result: { type: mongoose.Schema.Types.Mixed, default: null }, // { winnerTeam, points, reason } o null si la partida terminó a mitad de mano
   scoreAfter: { type: [Number], default: [0, 0] },
   startedAt: { type: Date, required: true },

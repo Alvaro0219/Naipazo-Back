@@ -1,4 +1,5 @@
 import { randomInt, randomUUID } from 'node:crypto';
+import mongoose from 'mongoose';
 import { Match } from '../models/Match.js';
 import { ACTIVE_ROOM_STATUSES, Room } from '../models/Room.js';
 import { Tournament } from '../models/Tournament.js';
@@ -18,6 +19,13 @@ function generateCode() {
   return Array.from({ length: CODE_LENGTH }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join('');
 }
 
+/** Asientos con su número (las salas viejas no lo guardan: vale el orden del array). */
+function seatsOf(room) {
+  return room.seats.map((s, i) => ({ userId: s.userId, username: s.username, seat: s.seat ?? i }));
+}
+
+const maxPlayersOf = (room) => room.config.maxPlayers || (room.config.mode === '2v2' ? 4 : 2);
+
 export function toPublicRoom(room) {
   return {
     id: String(room._id),
@@ -27,9 +35,13 @@ export function toPublicRoom(room) {
       targetPoints: room.config.targetPoints,
       withFlor: room.config.withFlor,
       isPrivate: Boolean(room.config.isPrivate),
+      mode: room.config.mode || '1v1',
+      maxPlayers: maxPlayersOf(room),
       bet: room.config.bet
     },
-    seats: room.seats.map((s) => ({ userId: String(s.userId), username: s.username })),
+    // Equipo por asiento: 0 = A (asientos 0 y 2), 1 = B (asientos 1 y 3)
+    seats: seatsOf(room).sort((a, b) => a.seat - b.seat)
+      .map((x) => ({ userId: String(x.userId), username: x.username, seat: x.seat, team: x.seat % 2 })),
     status: room.status,
     cancelReason: room.cancelReason || null,
     matchId: room.matchId ? String(room.matchId) : null,
@@ -81,7 +93,7 @@ function notifyRoom(room) {
 // ─── Operaciones ──────────────────────────────────────────
 
 /** Crea una sala. Idempotente por `uuid`: reintentar devuelve la misma sala. */
-export async function createRoom(user, { uuid, targetPoints, bet, isPrivate = false }) {
+export async function createRoom(user, { uuid, targetPoints, bet, isPrivate = false, mode = '1v1' }) {
   const existing = await Room.findOne({ uuid, hostId: user.id }).lean();
   if (existing) return toPublicRoom(existing);
 
@@ -90,6 +102,10 @@ export async function createRoom(user, { uuid, targetPoints, bet, isPrivate = fa
   const privateMax = Math.min(env.privateMaxBet, env.maxBet);
   if (isPrivate && bet > privateMax) {
     throw new AppError(`En salas privadas la apuesta máxima es de ${privateMax} fichas`, 400, 'PRIVATE_BET_TOO_HIGH');
+  }
+  // 2 vs 2: múltiplo de 10 para poder repartir sin decimales cuando alguien abandona (cada rival cobra 1,5 apuestas)
+  if (mode === '2v2' && bet % 10 !== 0) {
+    throw new AppError('En 2 vs 2 la apuesta tiene que ser múltiplo de 10', 400, 'BET_NOT_MULTIPLE_OF_10');
   }
   // Con apuesta: solo se verifica el saldo; las fichas se bloquean cuando se completa la mesa
   if (bet > 0 && (await getBalance(user.id)) < bet) {
@@ -101,8 +117,8 @@ export async function createRoom(user, { uuid, targetPoints, bet, isPrivate = fa
       const room = await Room.create({
         code: generateCode(),
         hostId: user.id,
-        config: { targetPoints, withFlor: false, isPrivate: Boolean(isPrivate), bet, maxPlayers: 2 },
-        seats: [{ userId: user.id, username: user.username }],
+        config: { targetPoints, withFlor: false, isPrivate: Boolean(isPrivate), mode, bet, maxPlayers: mode === '2v2' ? 4 : 2 },
+        seats: [{ userId: user.id, username: user.username, seat: 0 }],
         status: 'waiting',
         uuid
       });
@@ -122,10 +138,12 @@ export async function createRoom(user, { uuid, targetPoints, bet, isPrivate = fa
 }
 
 /**
- * Se suma a una sala en espera. Al completarse, la sala pasa a `playing` y arranca la partida.
+ * Se suma a una sala en espera, en el asiento pedido (o en el primero libre). Cuando se ocupa el último
+ * asiento, la sala pasa a `playing` y en la MISMA transacción se crea la partida y se bloquean las apuestas
+ * de todos: si a alguno no le alcanza, no se bloquea nada y la sala sigue en espera.
  * Una sala privada solo se abre con su código (`viaCode`): conocer el id no alcanza.
  */
-export async function joinRoom(user, roomId, { viaCode = false } = {}) {
+export async function joinRoom(user, roomId, { viaCode = false, seat = null } = {}) {
   const current = await Room.findById(roomId).lean();
   if (!current || (current.config.isPrivate && !viaCode)) throw new AppError('La sala no existe', 404, 'NOT_FOUND');
   if (String(current.hostId) === user.id) {
@@ -140,28 +158,88 @@ export async function joinRoom(user, roomId, { viaCode = false } = {}) {
     throw new AppError('No tenés fichas suficientes para esta mesa', 400, 'INSUFFICIENT_BALANCE');
   }
 
-  // Ocupar el asiento, crear la partida y bloquear las apuestas de ambos en UNA transacción:
-  // si falla cualquier paso (por ejemplo, el saldo de alguno), no se bloquea nada.
+  const max = maxPlayersOf(current);
+  const taken = seatsOf(current).map((x) => x.seat);
+  if (seat !== null && (seat < 0 || seat >= max)) throw new AppError('Ese asiento no existe', 400, 'INVALID_SEAT');
+  const target = seat ?? [...Array(max).keys()].find((k) => !taken.includes(k));
+  if (target === undefined) throw new AppError('La sala ya no está disponible', 409, 'ROOM_NOT_AVAILABLE');
+  if (taken.includes(target)) throw new AppError('Ese asiento ya está ocupado', 409, 'SEAT_TAKEN');
+
   const { room, match } = await runInTransaction(async (session) => {
+    // Condiciones atómicas: sigue en espera, queda lugar, el usuario no está y el asiento sigue libre
     const updated = await Room.findOneAndUpdate(
-      { _id: roomId, status: 'waiting', 'seats.1': { $exists: false }, 'seats.userId': { $ne: user.id } },
-      { $push: { seats: { userId: user.id, username: user.username } }, $set: { status: 'playing' } },
+      {
+        _id: roomId,
+        status: 'waiting',
+        [`seats.${max - 1}`]: { $exists: false },
+        'seats.userId': { $ne: user.id },
+        seats: { $not: { $elemMatch: { seat: target } } }
+      },
+      { $push: { seats: { userId: user.id, username: user.username, seat: target } } },
       { new: true, session }
     );
-    if (!updated) throw new AppError('La sala ya no está disponible', 409, 'ROOM_NOT_AVAILABLE');
+    if (!updated) throw new AppError('La sala ya no está disponible o ese asiento se ocupó', 409, 'ROOM_NOT_AVAILABLE');
+    if (updated.seats.length < max) return { room: updated, match: null };
 
+    updated.status = 'playing';
     const created = await createMatchForRoom(updated, session, {
-      onInsufficient: (userId) => (userId === user.id
-        ? new AppError('No tenés fichas suficientes para esta mesa', 400, 'INSUFFICIENT_BALANCE')
-        : new AppError('El anfitrión ya no tiene fichas suficientes para esta mesa', 409, 'HOST_INSUFFICIENT_BALANCE'))
+      onInsufficient: (userId) => {
+        if (userId === user.id) return new AppError('No tenés fichas suficientes para esta mesa', 400, 'INSUFFICIENT_BALANCE');
+        if (max === 2) return new AppError('El anfitrión ya no tiene fichas suficientes para esta mesa', 409, 'HOST_INSUFFICIENT_BALANCE');
+        const name = updated.seats.find((x) => String(x.userId) === userId)?.username || 'Un jugador';
+        return new AppError(`${name} ya no tiene fichas suficientes para esta mesa`, 409, 'PLAYER_INSUFFICIENT_BALANCE');
+      }
     });
     return { room: updated, match: created };
   });
 
-  matchService.startMatch({ room, match });
+  if (match) matchService.startMatch({ room, match });
   notifyRoom(room);
-  await notifyLobby();
-  if (room.config.bet > 0) await notifyBalances(room.seats.map((s) => s.userId));
+  if (!room.config.isPrivate) await notifyLobby();
+  if (match && room.config.bet > 0) await notifyBalances(room.seats.map((x) => x.userId));
+  return toPublicRoom(room);
+}
+
+/** 2 vs 2: cambiarse a un asiento libre mientras la sala está en espera. */
+export async function changeSeat(user, roomId, seat) {
+  const current = await Room.findOne({ _id: roomId, 'seats.userId': user.id }).lean();
+  if (!current) throw new AppError('No estás sentado en esta mesa', 403, 'NOT_IN_ROOM');
+  if (current.status !== 'waiting') throw new AppError('La partida ya empezó', 409, 'ROOM_NOT_AVAILABLE');
+  if ((current.config.mode || '1v1') !== '2v2') throw new AppError('Solo se cambia de asiento en 2 vs 2', 400, 'SEAT_CHANGE_NOT_ALLOWED');
+  if (seat < 0 || seat >= maxPlayersOf(current)) throw new AppError('Ese asiento no existe', 400, 'INVALID_SEAT');
+
+  const me = new mongoose.Types.ObjectId(user.id);
+  const room = await Room.findOneAndUpdate(
+    { _id: roomId, status: 'waiting', 'seats.userId': me, seats: { $not: { $elemMatch: { seat } } } },
+    { $set: { 'seats.$[me].seat': seat } },
+    { new: true, arrayFilters: [{ 'me.userId': me }] }
+  );
+  if (!room) throw new AppError('Ese asiento ya está ocupado', 409, 'SEAT_TAKEN');
+  notifyRoom(room);
+  if (!room.config.isPrivate) await notifyLobby();
+  return toPublicRoom(room);
+}
+
+/**
+ * Salir de una sala en espera: libera el asiento. Si sale el anfitrión y quedan otros, pasa a ser
+ * anfitrión el que sigue (por asiento); si no queda nadie, la sala se cancela.
+ */
+export async function leaveRoom(user, roomId) {
+  const current = await Room.findOne({ _id: roomId, 'seats.userId': user.id }).lean();
+  if (!current) throw new AppError('No estás sentado en esta mesa', 403, 'NOT_IN_ROOM');
+  if (current.status !== 'waiting') throw new AppError('La partida ya empezó: no se puede salir', 409, 'ROOM_NOT_AVAILABLE');
+
+  const others = seatsOf(current).filter((x) => String(x.userId) !== user.id).sort((a, b) => a.seat - b.seat);
+  const me = new mongoose.Types.ObjectId(user.id);
+  const update = others.length === 0
+    ? { $set: { status: 'cancelled' } }
+    : { $pull: { seats: { userId: me } }, ...(String(current.hostId) === user.id ? { $set: { hostId: others[0].userId } } : {}) };
+  const room = await Room.findOneAndUpdate({ _id: roomId, status: 'waiting', 'seats.userId': me }, update, { new: true });
+  if (!room) throw new AppError('La partida ya empezó: no se puede salir', 409, 'ROOM_NOT_AVAILABLE');
+
+  notifyRoom(room);
+  emitter.toUser(user.id, 'room:update', { ...toPublicRoom(room), left: true });
+  if (!room.config.isPrivate) await notifyLobby();
   return toPublicRoom(room);
 }
 
@@ -173,9 +251,15 @@ async function createMatchForRoom(room, session, { onInsufficient, tournamentId 
   const bet = room.config.bet || 0;
   const [match] = await Match.create([{
     roomId: room._id,
-    config: { targetPoints: room.config.targetPoints, withFlor: room.config.withFlor, isPrivate: Boolean(room.config.isPrivate), bet },
-    players: room.seats.map((s, seat) => ({
-      userId: s.userId, username: s.username, seat, team: seat % 2, betLocked: bet
+    config: {
+      targetPoints: room.config.targetPoints,
+      withFlor: room.config.withFlor,
+      isPrivate: Boolean(room.config.isPrivate),
+      mode: room.config.mode || '1v1',
+      bet
+    },
+    players: seatsOf(room).sort((a, b) => a.seat - b.seat).map((x) => ({
+      userId: x.userId, username: x.username, seat: x.seat, team: x.seat % 2, betLocked: bet
     })),
     status: 'playing',
     betsSettled: !(bet > 0),
@@ -229,9 +313,14 @@ export async function createRematchRoom(previousRoomId, players) {
   const { room, match } = await createPlayingRoom({
     hostId: players[0].id,
     config: {
-      targetPoints: previous.config.targetPoints, withFlor: false, isPrivate: Boolean(previous.config.isPrivate), bet: previous.config.bet, maxPlayers: 2
+      targetPoints: previous.config.targetPoints,
+      withFlor: false,
+      isPrivate: Boolean(previous.config.isPrivate),
+      mode: previous.config.mode || '1v1',
+      bet: previous.config.bet,
+      maxPlayers: maxPlayersOf(previous)
     },
-    seats: players.map((p) => ({ userId: p.id, username: p.username })),
+    seats: players.map((p, seat) => ({ userId: p.id, username: p.username, seat })),
     rematchOf: previous._id,
     uuid: randomUUID()
   }, (newRoom, session) => createMatchForRoom(newRoom, session, {
@@ -258,7 +347,7 @@ export async function createTournamentRoom({ tournament, round, slot, players })
     const { room, match } = await createPlayingRoom({
       hostId: players[0].userId,
       config: { targetPoints: tournament.config.targetPoints, withFlor: false, bet: 0, maxPlayers: 2 },
-      seats: players.map((p) => ({ userId: p.userId, username: p.username })),
+      seats: players.map((p, seat) => ({ userId: p.userId, username: p.username, seat })),
       tournamentId: tournament._id,
       uuid
     }, (newRoom, session) => createMatchForRoom(newRoom, session, { tournamentId: tournament._id, round }));
@@ -282,10 +371,10 @@ export async function getRoomByCode(code) {
 }
 
 /** Unirse con el código (salas privadas o públicas). */
-export async function joinRoomByCode(user, code) {
+export async function joinRoomByCode(user, code, { seat = null } = {}) {
   const room = await Room.findOne({ code, status: 'waiting' }).select('_id').lean();
   if (!room) throw ROOM_CODE_NOT_FOUND();
-  return joinRoom(user, room._id, { viaCode: true });
+  return joinRoom(user, room._id, { viaCode: true, seat });
 }
 
 /** Cancela una sala propia que todavía está en espera. */
@@ -342,9 +431,12 @@ export async function getActiveRoom(userId) {
   return room ? toPublicRoom(room) : null;
 }
 
-export async function listOpenRooms({ targetPoints, minBet, maxBet }, { skip, limit }) {
+export async function listOpenRooms({ targetPoints, mode, minBet, maxBet }, { skip, limit }) {
   const filter = { status: 'waiting', 'config.isPrivate': { $ne: true } };
   if (targetPoints) filter['config.targetPoints'] = targetPoints;
+  // Las salas viejas no tienen modo: son 1 vs 1
+  if (mode === '2v2') filter['config.mode'] = '2v2';
+  else if (mode === '1v1') filter['config.mode'] = { $ne: '2v2' };
   if (minBet !== undefined || maxBet !== undefined) {
     filter['config.bet'] = {};
     if (minBet !== undefined) filter['config.bet'].$gte = minBet;

@@ -25,12 +25,23 @@ export const getRoomByCode = asyncHandler(async (req, res) => {
 });
 
 export const joinRoomByCode = asyncHandler(async (req, res) => {
-  const room = await roomService.joinRoomByCode(req.user, req.validated.code);
+  const room = await roomService.joinRoomByCode(req.user, req.validated.code, { seat: req.validated.seat ?? null });
   return ok(res, { room });
 });
 
+export const changeSeat = asyncHandler(async (req, res) => {
+  const room = await roomService.changeSeat(req.user, req.params.id, req.validated.seat);
+  return ok(res, { room });
+});
+
+export const leaveRoom = asyncHandler(async (req, res) => {
+  const room = await roomService.leaveRoom(req.user, req.params.id);
+  return ok(res, { room });
+});
+
+// Las rutas con id y cuerpo validan los dos: el id ya validado se lee de req.params
 export const joinRoom = asyncHandler(async (req, res) => {
-  const room = await roomService.joinRoom(req.user, req.validated.id);
+  const room = await roomService.joinRoom(req.user, req.params.id, { seat: req.validated.seat ?? null });
   return ok(res, { room });
 });
 

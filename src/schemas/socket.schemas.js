@@ -1,5 +1,6 @@
 import Joi from 'joi';
 import { ACTION_TYPES } from '../game/truco/index.js';
+import { SIGNS } from '../services/matchService.js';
 import { AppError } from '../utils/AppError.js';
 import { esMessages } from './messages.js';
 import { objectId } from './room.schemas.js';
@@ -23,6 +24,11 @@ export const gameActionSchema = Joi.object({
   payload: Joi.object({
     cardId: Joi.string().max(20).label('La carta')
   }).default({})
+});
+
+export const gameSignSchema = Joi.object({
+  matchId: objectId.required().label('La partida'),
+  sign: Joi.string().valid(...SIGNS).required().label('La seña')
 });
 
 /** Valida un payload entrante de Socket.IO; lanza AppError VALIDATION_ERROR si no cumple. */

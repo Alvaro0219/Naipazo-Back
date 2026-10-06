@@ -27,9 +27,17 @@ export const settings = {
   nextHandDelayMs: 2500, // pausa para que se vea cómo terminó la mano antes del próximo reparto
   finishedTtlMs: 5 * 60 * 1000, // cuánto queda en memoria una partida terminada (reconexiones tardías)
   turnTimeoutMs: env.turnTimeoutSeconds * 1000,
-  reconnectGraceMs: env.reconnectGraceSeconds * 1000
+  reconnectGraceMs: env.reconnectGraceSeconds * 1000,
+  // 2 vs 2: pausa máxima acumulada por desconexión de cada jugador (superada, abandona)
+  maxDisconnectPauseMs: env.maxDisconnectPauseSeconds * 1000
 };
 const MAX_REMEMBERED_ACTIONS = 200;
+
+/** Señas del 2 vs 2: lista cerrada (sin texto libre). No se valida que sean verdad, como en la mesa real. */
+export const SIGNS = [
+  'ANCHO_ESPADA', 'ANCHO_BASTO', 'SIETE_ESPADA', 'SIETE_ORO', 'UN_TRES', 'UN_DOS', 'ANCHO_FALSO', 'TENGO_ENVIDO', 'NO_TENGO_NADA'
+];
+export const SIGN_INTERVAL_MS = 2000;
 
 /** @type {Map<string, object>} matchId -> runtime */
 const runtimes = new Map();
@@ -58,6 +66,7 @@ export function startMatch({ match, room }) {
     roomCode: room.code,
     bet: match.config.bet || 0,
     isPrivate: Boolean(match.config.isPrivate),
+    mode: match.config.mode || (players.length === 4 ? '2v2' : '1v1'),
     tournamentId: match.tournamentId ? String(match.tournamentId) : null,
     round: match.round ?? null,
     players,
@@ -77,6 +86,9 @@ export function startMatch({ match, room }) {
     finishing: false,
     finished: false,
     abandonedBy: null,
+    abandoners: [],
+    pauseUsedMs: new Map(), // 2 vs 2: tiempo de desconexión acumulado por jugador
+    lastSignAt: new Map(), // 2 vs 2: para limitar a una seña cada 2 s
     chips: null
   };
   runtimes.set(rt.matchId, rt);
@@ -99,6 +111,7 @@ function dealHand(rt) {
     dealt: state.hand.dealt,
     events: [],
     publicEvents: [],
+    signs: [], // { from, to, sign, at }: las recibe solo el compañero
     startedAt: new Date()
   };
   publish(rt, events);
@@ -153,6 +166,29 @@ export async function handleAction(userId, { matchId, actionId, type, payload })
   return { duplicated: false };
 }
 
+/**
+ * 2 vs 2: seña a su compañero. Llega SOLO al compañero (los rivales nunca la reciben), únicamente con una mano
+ * en curso y como máximo una cada 2 s. Queda en el MatchHandLog para auditoría.
+ */
+export function sendSign(userId, { matchId, sign }) {
+  const rt = getActiveRuntime(matchId, userId);
+  if (rt.mode !== '2v2') throw new AppError('Las señas son solo para 2 vs 2', 400, 'SIGNS_NOT_AVAILABLE');
+  if (!SIGNS.includes(sign)) throw new AppError('Esa seña no existe', 400, 'INVALID_SIGN');
+  if (rt.state.phase !== PHASES.PLAYING || !rt.handLog) throw new AppError('Las señas se hacen durante la mano', 409, 'NO_HAND');
+  const now = Date.now();
+  if (now - (rt.lastSignAt.get(userId) || 0) < SIGN_INTERVAL_MS) {
+    throw new AppError('Esperá un momento antes de hacer otra seña', 429, 'SIGN_RATE_LIMITED');
+  }
+  rt.lastSignAt.set(userId, now);
+  const me = rt.state.players.find((p) => p.id === userId);
+  const partner = rt.state.players.find((p) => p.team === me.team && p.id !== userId);
+  const entry = { from: userId, to: partner.id, sign, at: new Date(now).toISOString() };
+  rt.handLog.signs.push(entry);
+  const socketId = rt.sockets.get(partner.id);
+  if (socketId) emitter.toSocket(socketId, 'game:sign', { matchId: rt.matchId, from: userId, sign, at: entry.at });
+  return { sent: true };
+}
+
 /** El jugador abandona voluntariamente: pierde la partida (y la apuesta). */
 export async function abandonMatch(userId, matchId) {
   const rt = getActiveRuntime(matchId, userId);
@@ -165,6 +201,9 @@ async function endByAbandon(rt, userId) {
   const { state, events } = forfeitMatch(rt.state, player.team, 'abandon');
   rt.state = state;
   rt.abandonedBy = userId;
+  // 2 vs 2: si en ese momento el compañero también estaba desconectado, abandonaron los dos
+  const partner = rt.state.players.find((p) => p.team === player.team && p.id !== userId);
+  rt.abandoners = partner && rt.grace.has(partner.id) && !rt.sockets.has(partner.id) ? [userId, partner.id] : [userId];
   rt.handLog?.events.push({ action: 'ABANDON', playerId: userId, payload: null, timestamp: new Date() });
   publish(rt, events);
   await afterTransition(rt);
@@ -215,14 +254,30 @@ async function persistHand(rt) {
   }
 }
 
+/**
+ * Resultado de cada jugador. En 2 vs 2, si su compañero abandonó y él no, queda "sin resultado"
+ * (no suma derrota: no se lo castiga por el abandono del otro).
+ */
+function playerResult(rt, p) {
+  if (p.team === rt.state.winnerTeam) return 'win';
+  if (rt.abandoners.includes(p.id)) return 'abandon';
+  if (rt.state.endReason === 'abandon' && rt.mode === '2v2') return 'no-result';
+  return 'loss';
+}
+
 async function finishMatch(rt) {
   const { state } = rt;
+  const results = Object.fromEntries(state.players.map((p) => [p.id, playerResult(rt, p)]));
+  rt.results = results;
+  const match = await Match.findById(rt.matchId).select('players').lean();
   await Match.updateOne({ _id: rt.matchId }, {
     status: 'finished',
     score: [...state.score],
     winnerTeam: state.winnerTeam,
     endReason: state.endReason,
     abandonedBy: rt.abandonedBy,
+    abandoners: rt.abandoners,
+    players: match.players.map((p) => ({ ...p, result: results[String(p.userId)] })),
     endedAt: new Date()
   });
   await Room.updateOne({ _id: rt.roomId }, { status: 'finished' });
@@ -235,14 +290,17 @@ async function finishMatch(rt) {
   }
 
   // Las salas privadas quedan en el historial pero no suman estadísticas (que alimentan el ranking)
-  if (!rt.isPrivate) await User.bulkWrite(state.players.map((p) => {
-    const won = p.team === state.winnerTeam;
-    const inc = { 'stats.played': 1, [won ? 'stats.won' : 'stats.lost']: 1 };
-    if (p.id === rt.abandonedBy) inc['stats.abandoned'] = 1;
+  // 1 vs 1 en `stats`; 2 vs 2 en `statsTwoVsTwo`. Quien queda "sin resultado" no suma nada.
+  const prefix = rt.mode === '2v2' ? 'statsTwoVsTwo' : 'stats';
+  const updates = state.players.filter((p) => results[p.id] !== 'no-result').map((p) => {
+    const won = results[p.id] === 'win';
+    const inc = { [`${prefix}.played`]: 1, [`${prefix}.${won ? 'won' : 'lost'}`]: 1 };
+    if (results[p.id] === 'abandon') inc[`${prefix}.abandoned`] = 1;
     const net = rt.chips?.players.find((c) => c.userId === p.id)?.net ?? 0;
-    if (net > 0) inc['stats.chipsWon'] = net;
+    if (net > 0) inc[`${prefix}.chipsWon`] = net;
     return { updateOne: { filter: { _id: p.id }, update: { $inc: inc } } };
-  }));
+  });
+  if (!rt.isPrivate && updates.length) await User.bulkWrite(updates);
 
   rt.finished = true;
   rt.finishing = false;
@@ -306,18 +364,23 @@ function refreshTurnTimer(rt, { keepClock = false } = {}) {
   else rt.turnRemainingMs = settings.turnTimeoutMs;
 }
 
+/** Cuánto puede seguir desconectado: la gracia, y en 2 vs 2 además lo que le queda de pausa acumulada. */
+function graceDurationMs(rt, userId) {
+  if (rt.mode !== '2v2') return settings.reconnectGraceMs;
+  const left = settings.maxDisconnectPauseMs - (rt.pauseUsedMs.get(userId) || 0);
+  return Math.max(0, Math.min(settings.reconnectGraceMs, left));
+}
+
 function startGrace(rt, userId, { announce = true } = {}) {
   if (rt.finished || rt.finishing || rt.grace.has(userId)) return;
+  const ms = graceDurationMs(rt, userId);
   const timer = setTimeout(() => {
     rt.grace.delete(userId);
     endByAbandon(rt, userId).catch((err) => console.error(`Error al dar por abandonada la partida ${rt.matchId}:`, err));
-  }, settings.reconnectGraceMs);
-  rt.grace.set(userId, { timer, deadline: Date.now() + settings.reconnectGraceMs });
+  }, ms);
+  rt.grace.set(userId, { timer, startedAt: Date.now(), deadline: Date.now() + ms });
   if (announce) {
-    emitter.toMatch(rt.matchId, 'player:disconnected', {
-      playerId: userId,
-      graceSeconds: Math.round(settings.reconnectGraceMs / 1000)
-    });
+    emitter.toMatch(rt.matchId, 'player:disconnected', { playerId: userId, graceSeconds: Math.round(ms / 1000) });
   }
 }
 
@@ -326,6 +389,10 @@ function stopGrace(rt, userId) {
   if (!grace) return false;
   clearTimeout(grace.timer);
   rt.grace.delete(userId);
+  // Solo cuenta la pausa de una desconexión real (no la espera hasta que abre la mesa por primera vez)
+  if (rt.everConnected.has(userId)) {
+    rt.pauseUsedMs.set(userId, (rt.pauseUsedMs.get(userId) || 0) + (Date.now() - grace.startedAt));
+  }
   return true;
 }
 
@@ -409,6 +476,7 @@ export function buildStateFor(rt, userId) {
     roomId: rt.roomId,
     roomCode: rt.roomCode,
     bet: rt.bet,
+    mode: rt.mode,
     tournament: rt.tournamentId ? { id: rt.tournamentId, round: rt.round } : null,
     usernames: Object.fromEntries(rt.players.map((p) => [p.id, p.username])),
     // Se manda el tiempo restante (no la hora) para no depender del reloj del cliente
@@ -420,7 +488,11 @@ export function buildStateFor(rt, userId) {
         .filter(([id]) => rt.everConnected.has(id))
         .map(([id, g]) => [id, { remainingMs: Math.max(0, g.deadline - now) }])
     ),
-    ...projectStateFor(rt.state, userId)
+    ...projectStateFor(rt.state, userId),
+    // 2 vs 2: señas que ESTE jugador recibió en la mano en curso (así se recuperan al reconectar)
+    signs: rt.mode === '2v2' && rt.handLog
+      ? rt.handLog.signs.filter((x) => x.to === userId).map(({ from, sign, at }) => ({ from, sign, at }))
+      : []
   };
 }
 
@@ -433,6 +505,9 @@ function buildFinishedSummary(rt) {
     score: [...state.score],
     endReason: state.endReason,
     abandonedBy: rt.abandonedBy,
+    abandoners: rt.abandoners,
+    results: rt.results || null,
+    mode: rt.mode,
     chips: rt.chips,
     tournamentId: rt.tournamentId,
     round: rt.round,
@@ -448,6 +523,9 @@ function buildFinishedSummaryFromDoc(match) {
     score: match.score,
     endReason: match.endReason,
     abandonedBy: match.abandonedBy ? String(match.abandonedBy) : null,
+    abandoners: (match.abandoners || []).map(String),
+    results: Object.fromEntries(match.players.map((p) => [String(p.userId), p.result || null])),
+    mode: match.config?.mode || '1v1',
     chips: buildChipsSummary(match),
     tournamentId: match.tournamentId ? String(match.tournamentId) : null,
     round: match.round ?? null,
