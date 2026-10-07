@@ -34,6 +34,11 @@ export const changeSeat = asyncHandler(async (req, res) => {
   return ok(res, { room });
 });
 
+export const confirmReady = asyncHandler(async (req, res) => {
+  const room = await roomService.confirmReady(req.user, req.params.id);
+  return ok(res, { room });
+});
+
 export const leaveRoom = asyncHandler(async (req, res) => {
   const room = await roomService.leaveRoom(req.user, req.params.id);
   return ok(res, { room });

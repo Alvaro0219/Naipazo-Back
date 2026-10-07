@@ -26,6 +26,8 @@ const RoomSchema = new mongoose.Schema({
     maxPlayers: { type: Number, enum: [2, 4], default: 2 }
   },
   seats: { type: [SeatSchema], default: [] },
+  // 2 vs 2: con los 4 lugares ocupados, quiénes confirmaron "Estoy listo" (arranca cuando confirman los 4)
+  readyIds: { type: [mongoose.Schema.Types.ObjectId], default: [] },
   status: { type: String, enum: ROOM_STATUSES, default: 'waiting', index: true },
   // P6: por qué se canceló (null = la canceló el anfitrión)
   cancelReason: { type: String, enum: ['expired', null], default: null },

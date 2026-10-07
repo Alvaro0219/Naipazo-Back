@@ -254,14 +254,10 @@ async function persistHand(rt) {
   }
 }
 
-/**
- * Resultado de cada jugador. En 2 vs 2, si su compañero abandonó y él no, queda "sin resultado"
- * (no suma derrota: no se lo castiga por el abandono del otro).
- */
+/** Resultado de cada jugador. En 2 vs 2, si abandona uno pierde también su compañero (sin abandono a su nombre). */
 function playerResult(rt, p) {
   if (p.team === rt.state.winnerTeam) return 'win';
   if (rt.abandoners.includes(p.id)) return 'abandon';
-  if (rt.state.endReason === 'abandon' && rt.mode === '2v2') return 'no-result';
   return 'loss';
 }
 

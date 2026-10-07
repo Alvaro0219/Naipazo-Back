@@ -27,6 +27,8 @@ async function fullTable({ bet = 0 } = {}) {
   for (let i = 0; i < 4; i++) players.push(await createUser({ chips: true, prefix: 'pareja' }));
   const room = await create2v2(players[0], { bet });
   for (const [i, p] of players.slice(1).entries()) await roomService.joinRoom(p, room.id, { seat: i + 1 });
+  // Con los 4 lugares ocupados, confirman todos
+  for (const p of players) await roomService.confirmReady(p, room.id);
   const doc = await Room.findById(room.id).lean();
   const sockets = {};
   for (const p of players) {
@@ -72,10 +74,36 @@ describe.skipIf(!hasTestDb)('2 vs 2 (integración)', () => {
       r = await roomService.joinRoom(b, room.id);
       expect(r.seats.find((s) => s.userId === b.id).seat).toBe(1);
       expect(r.status).toBe('waiting');
-      // Con 3 de 4 no arranca; el cuarto completa y arranca
+      // Con los 4 lugares ocupados todavía no arranca: tienen que confirmar los 4
       r = await roomService.joinRoom(c, room.id);
+      expect(r.status).toBe('waiting');
+      expect(r.seats).toHaveLength(4);
+      for (const p of [host, a, b]) r = await roomService.confirmReady(p, room.id);
+      expect(r.status).toBe('waiting');
+      expect(r.readyIds).toHaveLength(3);
+      r = await roomService.confirmReady(c, room.id);
       expect(r.status).toBe('playing');
       expect(matchService.getRuntime(r.matchId).players).toHaveLength(4);
+    });
+
+    it('no se confirma con la mesa incompleta; si alguien sale se borran las confirmaciones', async () => {
+      const [host, a, b, c, d] = [await createUser(), await createUser(), await createUser(), await createUser(), await createUser()];
+      const room = await create2v2(host);
+      await roomService.joinRoom(a, room.id);
+      await expect(roomService.confirmReady(host, room.id)).rejects.toMatchObject({ code: 'ROOM_NOT_FULL' });
+      await roomService.joinRoom(b, room.id);
+      await roomService.joinRoom(c, room.id);
+      await roomService.confirmReady(host, room.id);
+      await roomService.confirmReady(a, room.id);
+      let r = await roomService.leaveRoom(c, room.id);
+      expect(r.readyIds).toEqual([]);
+      await roomService.joinRoom(d, room.id);
+      r = await roomService.confirmReady(d, room.id);
+      expect(r.readyIds).toEqual([d.id]);
+      expect(r.status).toBe('waiting');
+      // En 1 vs 1 no hay confirmación
+      const solo = await roomService.createRoom(await createUser(), { uuid: randomUUID(), targetPoints: 15, bet: 0 });
+      await expect(roomService.confirmReady({ id: solo.hostId, username: 'x' }, solo.id)).rejects.toMatchObject({ code: 'READY_NOT_ALLOWED' });
     });
 
     it('cambiar de asiento solo a uno libre, en espera y solo en 2 vs 2', async () => {
@@ -123,21 +151,24 @@ describe.skipIf(!hasTestDb)('2 vs 2 (integración)', () => {
       expect(match.players.map((p) => [p.seat, p.team, p.betLocked])).toEqual([[0, 0, 100], [1, 1, 100], [2, 0, 100], [3, 1, 100]]);
     });
 
-    it('si a uno ya no le alcanza, no se bloquea ninguna y la sala sigue en espera con 3', async () => {
+    it('si a uno ya no le alcanza al confirmar el último, no se bloquea ninguna y se borran las confirmaciones', async () => {
       const players = [];
       for (let i = 0; i < 4; i++) players.push(await createUser({ chips: true }));
       const admin = await createUser();
       const room = await create2v2(players[0], { bet: 500 });
-      await roomService.joinRoom(players[1], room.id);
-      await roomService.joinRoom(players[2], room.id);
-      // El del asiento 1 se queda sin fichas antes de que entre el cuarto
+      for (const p of players.slice(1)) await roomService.joinRoom(p, room.id);
+      for (const p of players.slice(0, 3)) await roomService.confirmReady(p, room.id);
+      // El del asiento 1 ya confirmó, pero se queda sin fichas antes de que confirme el cuarto
       await adminAdjust({ adminId: admin.id, userId: players[1].id, amount: -800, reason: 'test', operationId: randomUUID() });
-      await expect(roomService.joinRoom(players[3], room.id)).rejects.toMatchObject({ code: 'PLAYER_INSUFFICIENT_BALANCE' });
+      await expect(roomService.confirmReady(players[3], room.id)).rejects.toMatchObject({ code: 'PLAYER_INSUFFICIENT_BALANCE' });
       const doc = await Room.findById(room.id).lean();
       expect(doc.status).toBe('waiting');
-      expect(doc.seats).toHaveLength(3);
+      expect(doc.readyIds).toEqual([]);
       expect(await Match.countDocuments()).toBe(0);
       for (const p of [players[0], players[2], players[3]]) expect(await balanceOf(p.id)).toBe(1000);
+      expect(emissions.some((e) => e.event === 'room:error')).toBe(true);
+      // Y sin fichas ni siquiera puede confirmar
+      await expect(roomService.confirmReady(players[1], room.id)).rejects.toMatchObject({ code: 'INSUFFICIENT_BALANCE' });
     });
 
     it('partida normal: cada ganador cobra 2 apuestas; las fichas se conservan', async () => {
@@ -157,25 +188,25 @@ describe.skipIf(!hasTestDb)('2 vs 2 (integración)', () => {
       expect(u.stats.played).toBe(0);
     });
 
-    it('abandona uno: pierde su apuesta, su compañero la recupera y cada rival cobra 1,5', async () => {
+    it('abandona uno: pierden los dos de la pareja y cada rival cobra 2 apuestas', async () => {
       const { players, matchId } = await fullTable({ bet: 100 });
       const [a1, b1, a2, b2] = players;
       await matchService.abandonMatch(a1.id, matchId);
       await waitFor(async () => (await Match.findById(matchId).lean()).betsSettled);
       expect(await balanceOf(a1.id)).toBe(900);
-      expect(await balanceOf(a2.id)).toBe(1000);
-      expect(await balanceOf(b1.id)).toBe(1050);
-      expect(await balanceOf(b2.id)).toBe(1050);
+      expect(await balanceOf(a2.id)).toBe(900);
+      expect(await balanceOf(b1.id)).toBe(1100);
+      expect(await balanceOf(b2.id)).toBe(1100);
       const match = await Match.findById(matchId).lean();
       expect(Object.fromEntries(match.players.map((p) => [String(p.userId), p.result]))).toEqual({
-        [a1.id]: 'abandon', [a2.id]: 'no-result', [b1.id]: 'win', [b2.id]: 'win'
+        [a1.id]: 'abandon', [a2.id]: 'loss', [b1.id]: 'win', [b2.id]: 'win'
       });
       const [ua1, ua2] = await Promise.all([User.findById(a1.id).lean(), User.findById(a2.id).lean()]);
       expect(ua1.statsTwoVsTwo).toMatchObject({ played: 1, lost: 1, abandoned: 1 });
-      expect(ua2.statsTwoVsTwo).toMatchObject({ played: 0, lost: 0 });
+      expect(ua2.statsTwoVsTwo).toMatchObject({ played: 1, lost: 1, abandoned: 0 });
       // Idempotente: liquidar de nuevo no mueve nada
       await settleMatchBets(matchId);
-      expect(await balanceOf(b1.id)).toBe(1050);
+      expect(await balanceOf(b1.id)).toBe(1100);
       for (const p of players) expect(await getLedgerSum(p.id)).toBe(await balanceOf(p.id));
     });
 
@@ -345,11 +376,11 @@ describe.skipIf(!hasTestDb)('2 vs 2 (integración)', () => {
 
       const { items } = await historyService.listMyMatches(b2.id, { skip: 0, limit: 10 });
       expect(items[0]).toMatchObject({
-        config: { mode: '2v2', bet: 100 }, result: 'no-result', partner: { id: b1.id }, chipsNet: 0
+        config: { mode: '2v2', bet: 100 }, result: 'lost', partner: { id: b1.id }, chipsNet: -100
       });
       expect(items[0].rivals.map((r) => r.id).sort()).toEqual([a1.id, a2.id].sort());
       const winner = (await historyService.listMyMatches(a1.id, { skip: 0, limit: 10 })).items[0];
-      expect(winner).toMatchObject({ result: 'won', partner: { id: a2.id }, chipsNet: 50 });
+      expect(winner).toMatchObject({ result: 'won', partner: { id: a2.id }, chipsNet: 100 });
 
       const detail = await historyService.getMatchDetail(a1.id, matchId);
       const logs = await MatchHandLog.find({ matchId }).lean();
@@ -384,6 +415,7 @@ describe.skipIf(!hasTestDb)('2 vs 2 (integración)', () => {
       for (let n = 0; n < 3; n++) {
         const room = await create2v2(players[0], { bet: 100, isPrivate: true });
         for (const [i, p] of players.slice(1).entries()) await roomService.joinRoomByCode(p, room.code, { seat: i + 1 });
+        for (const p of players) await roomService.confirmReady(p, room.id);
         const doc = await Room.findById(room.id).lean();
         for (const p of players) await matchService.attachSocket(String(doc.matchId), p.id, fakeSocket(`s-${p.id}-${n}`));
         // Siempre abandona el del asiento 1 (pareja B): la pareja A gana

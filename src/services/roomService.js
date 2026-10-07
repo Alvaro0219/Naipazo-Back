@@ -43,6 +43,7 @@ export function toPublicRoom(room) {
     seats: seatsOf(room).sort((a, b) => a.seat - b.seat)
       .map((x) => ({ userId: String(x.userId), username: x.username, seat: x.seat, team: x.seat % 2 })),
     status: room.status,
+    readyIds: (room.readyIds || []).map(String),
     cancelReason: room.cancelReason || null,
     matchId: room.matchId ? String(room.matchId) : null,
     tournamentId: room.tournamentId ? String(room.tournamentId) : null,
@@ -180,6 +181,8 @@ export async function joinRoom(user, roomId, { viaCode = false, seat = null } = 
     );
     if (!updated) throw new AppError('La sala ya no está disponible o ese asiento se ocupó', 409, 'ROOM_NOT_AVAILABLE');
     if (updated.seats.length < max) return { room: updated, match: null };
+    // 2 vs 2: con los 4 lugares ocupados se espera la confirmación de todos (confirmReady)
+    if (max === 4) return { room: updated, match: null };
 
     updated.status = 'playing';
     const created = await createMatchForRoom(updated, session, {
@@ -200,6 +203,71 @@ export async function joinRoom(user, roomId, { viaCode = false, seat = null } = 
   return toPublicRoom(room);
 }
 
+const startFailedMessage = (room, userId) => {
+  const name = room.seats.find((x) => String(x.userId) === userId)?.username || 'Un jugador';
+  return new AppError(`${name} ya no tiene fichas suficientes para esta mesa`, 409, 'PLAYER_INSUFFICIENT_BALANCE');
+};
+
+/**
+ * 2 vs 2: con los 4 lugares ocupados, cada uno confirma "Estoy listo". Cuando confirman los 4, en UNA
+ * transacción la sala pasa a `playing`, se crea la partida y se bloquean las 4 apuestas. Si a alguno ya no le
+ * alcanza, no arranca, se borran las confirmaciones y se avisa a la mesa.
+ */
+export async function confirmReady(user, roomId) {
+  const current = await Room.findOne({ _id: roomId, 'seats.userId': user.id }).lean();
+  if (!current) throw new AppError('No estás sentado en esta mesa', 403, 'NOT_IN_ROOM');
+  if (current.status !== 'waiting') throw new AppError('La partida ya empezó', 409, 'ROOM_NOT_AVAILABLE');
+  if ((current.config.mode || '1v1') !== '2v2') throw new AppError('Solo en 2 vs 2 hay que confirmar', 400, 'READY_NOT_ALLOWED');
+  if (current.seats.length < maxPlayersOf(current)) {
+    throw new AppError('Todavía faltan jugadores', 409, 'ROOM_NOT_FULL');
+  }
+  const bet = current.config.bet || 0;
+  if (bet > 0 && (await getBalance(user.id)) < bet) {
+    throw new AppError('No tenés fichas suficientes para esta mesa', 400, 'INSUFFICIENT_BALANCE');
+  }
+
+  const me = new mongoose.Types.ObjectId(user.id);
+  let room = await Room.findOneAndUpdate(
+    { _id: roomId, status: 'waiting', 'seats.3': { $exists: true }, 'seats.userId': me },
+    { $addToSet: { readyIds: me } },
+    { new: true }
+  );
+  if (!room) throw new AppError('La sala ya no está disponible', 409, 'ROOM_NOT_AVAILABLE');
+  if (room.readyIds.length < room.seats.length) {
+    notifyRoom(room);
+    return toPublicRoom(room);
+  }
+
+  // Confirmaron los 4: arranca (solo una de las llamadas concurrentes lo logra)
+  let match = null;
+  try {
+    ({ room, match } = await runInTransaction(async (session) => {
+      const started = await Room.findOneAndUpdate(
+        { _id: roomId, status: 'waiting', readyIds: { $size: room.seats.length } },
+        { $set: { status: 'playing' } },
+        { new: true, session }
+      );
+      if (!started) return { room, match: null };
+      const created = await createMatchForRoom(started, session, { onInsufficient: (userId) => startFailedMessage(started, userId) });
+      return { room: started, match: created };
+    }));
+  } catch (err) {
+    if (err?.code !== 'PLAYER_INSUFFICIENT_BALANCE') throw err;
+    // No arrancó: se borran las confirmaciones para que vuelvan a confirmar (o salga el que no tiene fichas)
+    const reset = await Room.findOneAndUpdate({ _id: roomId, status: 'waiting' }, { $set: { readyIds: [] } }, { new: true });
+    if (reset) notifyRoom(reset);
+    for (const seat of current.seats) emitter.toUser(String(seat.userId), 'room:error', { roomId: String(roomId), message: err.message });
+    throw err;
+  }
+  if (!match) return toPublicRoom(await Room.findById(roomId).lean());
+
+  matchService.startMatch({ room, match });
+  notifyRoom(room);
+  if (!room.config.isPrivate) await notifyLobby();
+  if (room.config.bet > 0) await notifyBalances(room.seats.map((x) => x.userId));
+  return toPublicRoom(room);
+}
+
 /** 2 vs 2: cambiarse a un asiento libre mientras la sala está en espera. */
 export async function changeSeat(user, roomId, seat) {
   const current = await Room.findOne({ _id: roomId, 'seats.userId': user.id }).lean();
@@ -211,7 +279,7 @@ export async function changeSeat(user, roomId, seat) {
   const me = new mongoose.Types.ObjectId(user.id);
   const room = await Room.findOneAndUpdate(
     { _id: roomId, status: 'waiting', 'seats.userId': me, seats: { $not: { $elemMatch: { seat } } } },
-    { $set: { 'seats.$[me].seat': seat } },
+    { $set: { 'seats.$[me].seat': seat, readyIds: [] } },
     { new: true, arrayFilters: [{ 'me.userId': me }] }
   );
   if (!room) throw new AppError('Ese asiento ya está ocupado', 409, 'SEAT_TAKEN');
@@ -233,7 +301,8 @@ export async function leaveRoom(user, roomId) {
   const me = new mongoose.Types.ObjectId(user.id);
   const update = others.length === 0
     ? { $set: { status: 'cancelled' } }
-    : { $pull: { seats: { userId: me } }, ...(String(current.hostId) === user.id ? { $set: { hostId: others[0].userId } } : {}) };
+    // Si alguien sale, se borran las confirmaciones: el que entre después tiene que confirmar con todos
+    : { $pull: { seats: { userId: me } }, $set: { readyIds: [], ...(String(current.hostId) === user.id ? { hostId: others[0].userId } : {}) } };
   const room = await Room.findOneAndUpdate({ _id: roomId, status: 'waiting', 'seats.userId': me }, update, { new: true });
   if (!room) throw new AppError('La partida ya empezó: no se puede salir', 409, 'ROOM_NOT_AVAILABLE');
 

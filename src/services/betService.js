@@ -18,25 +18,11 @@ export function computePayouts({ players, winnerTeam }, houseRate = env.houseRat
 }
 
 /**
- * Pagos y devoluciones de una partida terminada.
- *  - Normal (y 1 vs 1 siempre): el pozo se reparte entre los ganadores (computePayouts).
- *  - 2 vs 2 con UN solo abandono: quien abandonó pierde su apuesta, su compañero la recupera (BET_REFUND)
- *    y los rivales se reparten el resto (cada uno cobra 1,5 apuestas, menos comisión).
- *  - 2 vs 2 con los dos de un equipo abandonando: como una partida normal (cada rival cobra 2 apuestas).
+ * Pagos y devoluciones de una partida terminada: el pozo se reparte entre los ganadores (computePayouts).
+ * En 2 vs 2, si abandona uno pierden los dos de la pareja (*Decisión del dueño*): cada rival cobra 2 apuestas,
+ * como en una partida normal. Hoy no hay devoluciones en partidas terminadas (`refunds` queda para el futuro).
  */
 export function computeSettlement(match, houseRate = env.houseRate) {
-  const abandoners = (match.abandoners?.length ? match.abandoners : [match.abandonedBy].filter(Boolean)).map(String);
-  if (match.players.length === 4 && match.endReason === 'abandon' && abandoners.length === 1) {
-    const quitter = match.players.find((p) => String(p.userId) === abandoners[0]);
-    const partner = match.players.find((p) => p.team === quitter.team && String(p.userId) !== abandoners[0]);
-    const refunds = partner.betLocked > 0 ? [{ userId: String(partner.userId), amount: partner.betLocked }] : [];
-    const pot = match.players.reduce((sum, p) => sum + (p.betLocked || 0), 0) - (partner.betLocked || 0);
-    if (pot === 0) return { payouts: [], refunds };
-    const net = pot - Math.floor(pot * houseRate);
-    const winners = match.players.filter((p) => p.team !== quitter.team);
-    const share = Math.floor(net / winners.length);
-    return { payouts: winners.map((w) => ({ userId: String(w.userId), amount: share })), refunds };
-  }
   return { payouts: computePayouts(match, houseRate), refunds: [] };
 }
 

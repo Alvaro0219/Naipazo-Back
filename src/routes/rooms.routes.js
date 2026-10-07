@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import {
-  cancelRoom, changeSeat, createRoom, getMyRoom, getRoomByCode, joinRoom, joinRoomByCode, leaveRoom, listRooms
+  cancelRoom, changeSeat, confirmReady, createRoom, getMyRoom, getRoomByCode, joinRoom, joinRoomByCode, leaveRoom, listRooms
 } from '../controllers/roomController.js';
 import { authenticate } from '../middlewares/auth.js';
 import { roomLimiter, roomCodeIpLimiter, roomCodeUserLimiter } from '../middlewares/rateLimit.js';
@@ -19,6 +19,7 @@ router.post('/join-by-code', roomCodeIpLimiter, authenticate, roomCodeUserLimite
 router.post('/', roomLimiter, authenticate, validate(createRoomSchema), createRoom);
 router.post('/:id/join', roomLimiter, authenticate, validate(roomIdParamsSchema, 'params'), validate(joinRoomSchema), joinRoom);
 router.post('/:id/seat', roomLimiter, authenticate, validate(roomIdParamsSchema, 'params'), validate(changeSeatSchema), changeSeat);
+router.post('/:id/ready', roomLimiter, authenticate, validate(roomIdParamsSchema, 'params'), confirmReady);
 router.post('/:id/leave', roomLimiter, authenticate, validate(roomIdParamsSchema, 'params'), leaveRoom);
 router.delete('/:id', authenticate, validate(roomIdParamsSchema, 'params'), cancelRoom);
 

@@ -152,9 +152,12 @@ Corren en serie (`fileParallelism: false`) contra Atlas (~8 min). `connectTestDb
   un truco puede anteponer el envido. En 1 vs 1 todo queda igual. Tests: `engine2v2.test.js` y simulación de 4 bots.
 - **Salas:** `Room.config.mode` (`1v1`|`2v2`), `maxPlayers` 2|4 y asientos con `seat` (equipo = asiento % 2; las salas
   viejas sin `seat` usan el orden del array: `seatsOf`). `joinRoom` ocupa el asiento y, al llenarse, crea el `Match` y
-  bloquea TODAS las apuestas en la misma transacción. `changeSeat` y `leaveRoom` (el anfitrión pasa al siguiente).
-- **Liquidación:** `betService.computeSettlement` (abandono de uno en 2 vs 2: compañero recupera su apuesta con
-  `BET_REFUND`, rivales 1,5 cada uno). `Match.abandoners` y `players[].result` (`no-result` para el compañero).
+  bloquea TODAS las apuestas en la misma transacción. En 2 vs 2, llenar la mesa NO arranca: cada uno confirma
+  (`confirmReady`, `POST /rooms/:id/ready`, `Room.readyIds`) y recién con los 4 se crea el `Match` y se bloquean las
+  apuestas; `changeSeat` y `leaveRoom` (el anfitrión pasa al siguiente) borran las confirmaciones.
+- **Liquidación:** en 2 vs 2, si abandona uno **pierden los dos** (decisión del dueño): cada rival cobra 2 apuestas.
+  `Match.abandoners` y `players[].result` (`abandon` para quien abandonó, `loss` para su compañero; `no-result` solo
+  aparece en partidas viejas).
   Estadísticas del 2 vs 2 en `User.statsTwoVsTwo` (las de 1 vs 1 y torneos siguen en `stats`, sin migración).
 - **Tiempo real:** tope de pausa por desconexión acumulada (`MAX_DISCONNECT_PAUSE_SECONDS`, solo 2 vs 2). Señas
   (`matchService.sendSign`, evento `game:sign`): solo al compañero, una cada 2 s, guardadas en `MatchHandLog.signs` y
