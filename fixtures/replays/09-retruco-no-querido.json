@@ -1,0 +1,58 @@
+{
+  "rulesVersion": 1,
+  "modo": "1v1",
+  "objetivo": 15,
+  "marcador": [
+    0,
+    0
+  ],
+  "id": "09-retruco-no-querido",
+  "guion": 9,
+  "reglas": [
+    "R-TRUCO-03"
+  ],
+  "titulo": "Retruco no querido: suma 2 quien cantó el retruco",
+  "manos": [
+    [
+      "4-copa",
+      "5-oro",
+      "6-basto"
+    ],
+    [
+      "4-espada",
+      "5-copa",
+      "6-oro"
+    ]
+  ],
+  "acciones": [
+    [
+      "A",
+      "CALL_TRUCO"
+    ],
+    [
+      "B",
+      "CALL_RETRUCO"
+    ],
+    [
+      "A",
+      "REJECT"
+    ]
+  ],
+  "esperado": {
+    "resultadoMano": {
+      "winnerTeam": 1,
+      "points": 2,
+      "reason": "truco_rejected"
+    },
+    "marcador": [
+      0,
+      2
+    ],
+    "fase": "hand_over"
+  },
+  "revisado": {
+    "por": null,
+    "fecha": null,
+    "notas": "Pendiente de revisión por jugadores expertos (sección 11)."
+  }
+}

@@ -11,18 +11,18 @@ export function registerGameHandlers(socket) {
   socket.on('game:action', safeHandler(socket, async (payload) => {
     if (!allow()) throw new AppError('Estás enviando acciones demasiado rápido', 429, 'RATE_LIMITED');
     const action = validateSocketPayload(gameActionSchema, payload);
-    await matchService.handleAction(socket.user.id, action);
+    await matchService.handleAction(socket.user.id, action, { socketId: socket.id });
   }));
 
   // 2 vs 2: seña al compañero (el servidor la reenvía solo a él)
   socket.on('game:sign', safeHandler(socket, async (payload) => {
-    matchService.sendSign(socket.user.id, validateSocketPayload(gameSignSchema, payload));
+    matchService.sendSign(socket.user.id, validateSocketPayload(gameSignSchema, payload), { socketId: socket.id });
   }));
 
   // Abandonar la partida en curso: es una derrota (y se pierde la apuesta)
   socket.on('game:abandon', safeHandler(socket, async (payload) => {
     const { matchId } = validateSocketPayload(matchRefSchema, payload);
-    await matchService.abandonMatch(socket.user.id, matchId);
+    await matchService.abandonMatch(socket.user.id, matchId, { socketId: socket.id });
   }));
 
   // Revancha: pedirla (o aceptarla si el rival ya la pidió) y rechazarla

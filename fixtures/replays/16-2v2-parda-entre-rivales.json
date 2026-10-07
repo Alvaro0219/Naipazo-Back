@@ -1,0 +1,75 @@
+{
+  "rulesVersion": 1,
+  "modo": "2v2",
+  "objetivo": 15,
+  "marcador": [
+    0,
+    0
+  ],
+  "id": "16-2v2-parda-entre-rivales",
+  "guion": 16,
+  "reglas": [
+    "R-BAZA-02",
+    "R-TURNO-02"
+  ],
+  "titulo": "2 vs 2: empatan rivales: parda, y abre la siguiente el mano",
+  "manos": [
+    [
+      "3-espada",
+      "4-basto",
+      "5-copa"
+    ],
+    [
+      "3-oro",
+      "6-oro",
+      "7-copa"
+    ],
+    [
+      "4-copa",
+      "6-copa",
+      "10-oro"
+    ],
+    [
+      "4-oro",
+      "6-espada",
+      "10-copa"
+    ]
+  ],
+  "acciones": [
+    [
+      "A1",
+      "PLAY_CARD",
+      "3-espada"
+    ],
+    [
+      "B1",
+      "PLAY_CARD",
+      "3-oro"
+    ],
+    [
+      "A2",
+      "PLAY_CARD",
+      "4-copa"
+    ],
+    [
+      "B2",
+      "PLAY_CARD",
+      "4-oro"
+    ]
+  ],
+  "esperado": {
+    "fase": "playing",
+    "eventos": [
+      {
+        "type": "BAZA_WON",
+        "winnerTeam": null
+      }
+    ],
+    "turno": "A1"
+  },
+  "revisado": {
+    "por": null,
+    "fecha": null,
+    "notas": "Pendiente de revisión por jugadores expertos (sección 11)."
+  }
+}

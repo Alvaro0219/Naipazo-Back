@@ -324,7 +324,7 @@ describe('acciones ilegales', () => {
     const { state: s } = run(state, [[A, 'CALL_TRUCO']]);
     expect(() => applyAction(s, A, { type: 'PLAY_CARD', payload: { cardId: '1-espada' } }))
       .toThrow(expect.objectContaining({ code: 'NOT_YOUR_TURN' }));
-    expect(() => applyAction(s, A, { type: 'ACCEPT' })).toThrow(expect.objectContaining({ code: 'NOTHING_TO_ANSWER' }));
+    expect(() => applyAction(s, A, { type: 'ACCEPT' })).toThrow(expect.objectContaining({ code: 'NOT_YOUR_TURN' }));
     expect(getAvailableActions(s, A)).toEqual([]);
   });
 

@@ -1,0 +1,50 @@
+{
+  "rulesVersion": 1,
+  "modo": "1v1",
+  "objetivo": 15,
+  "marcador": [
+    0,
+    0
+  ],
+  "id": "12a-turno-vencido",
+  "guion": 12,
+  "reglas": [
+    "R-TIEMPO-01"
+  ],
+  "titulo": "Vence el turno al tener que jugar: pierde la mano, sin el punto extra del envido",
+  "manos": [
+    [
+      "4-copa",
+      "5-oro",
+      "6-basto"
+    ],
+    [
+      "4-espada",
+      "5-copa",
+      "6-oro"
+    ]
+  ],
+  "acciones": [
+    [
+      "A",
+      "TIMEOUT"
+    ]
+  ],
+  "esperado": {
+    "resultadoMano": {
+      "winnerTeam": 1,
+      "points": 1,
+      "reason": "timeout"
+    },
+    "marcador": [
+      0,
+      1
+    ],
+    "fase": "hand_over"
+  },
+  "revisado": {
+    "por": null,
+    "fecha": null,
+    "notas": "Pendiente de revisión por jugadores expertos (sección 11)."
+  }
+}

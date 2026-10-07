@@ -9,6 +9,7 @@ import { setTestSink } from '../../sockets/emitter.js';
 import * as adminService from '../adminService.js';
 import { settleMatchBets } from '../betService.js';
 import * as historyService from '../historyService.js';
+import { auditMatch, reconcile } from '../integrityService.js';
 import { getRanking } from '../rankingService.js';
 import * as matchService from '../matchService.js';
 import * as rematchService from '../rematchService.js';
@@ -425,6 +426,21 @@ describe.skipIf(!hasTestDb)('2 vs 2 (integración)', () => {
       const flows = await adminService.chipFlows({ days: 30, minMatches: 3 });
       const pair = flows.find((f) => f.giver.id === players[1].id && f.receiver.id === players[0].id);
       expect(pair).toMatchObject({ matches: 3, giverWins: 0, oneDirection: true });
+    });
+  });
+
+  describe('auditoría (EXACTITUD_DEL_JUEGO.md, 10.2)', () => {
+    it('R-ECO-01: una partida 2 vs 2 completa y una por abandono se repiten igual y las fichas cuadran', async () => {
+      const full = await fullTable({ bet: 100 });
+      await playToEnd(full.matchId, 2024);
+      await waitFor(async () => (await Match.findById(full.matchId).lean()).betsSettled);
+      expect(await auditMatch(full.matchId)).toEqual({ status: 'ok', diffs: [] });
+
+      const left = await fullTable({ bet: 100 });
+      await matchService.abandonMatch(left.players[1].id, left.matchId);
+      await waitFor(async () => (await Match.findById(left.matchId).lean()).betsSettled);
+      expect(await auditMatch(left.matchId)).toEqual({ status: 'ok', diffs: [] });
+      expect((await reconcile()).problems).toEqual([]);
     });
   });
 });

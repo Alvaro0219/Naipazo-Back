@@ -26,6 +26,11 @@ describe('detector de invariantes', () => {
     const s = startMatch({ mano: MANO, pie: PIE });
     expect(ids({ ...s, score: [15, 3] })).toContain('I-P3');
     expect(ids({ ...s, phase: 'finished', winnerTeam: null, endReason: 'normal' })).toContain('R-FIN-02');
+    // Ganador que no llegó al objetivo, y los dos en el objetivo
+    expect(ids({ ...s, hand: null, phase: 'finished', winnerTeam: 0, endReason: 'normal', score: [12, 3] })).toContain('R-FIN-02');
+    expect(ids({ ...s, hand: null, phase: 'finished', winnerTeam: 0, endReason: 'normal', score: [15, 15] })).toContain('R-FIN-02');
+    // Por abandono el marcador no cuenta
+    expect(ids({ ...s, hand: null, phase: 'finished', winnerTeam: 0, endReason: 'abandon', score: [2, 9] })).toEqual([]);
   });
 
   it('R-REP-01: detecta cartas repetidas, perdidas o que no salieron del mazo', () => {

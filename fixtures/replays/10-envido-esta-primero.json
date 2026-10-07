@@ -1,0 +1,113 @@
+{
+  "rulesVersion": 1,
+  "modo": "1v1",
+  "objetivo": 15,
+  "marcador": [
+    0,
+    0
+  ],
+  "id": "10-envido-esta-primero",
+  "guion": 10,
+  "reglas": [
+    "R-ENV-08"
+  ],
+  "titulo": "\"El envido está primero\": truco, se responde con envido; se resuelve el envido y después el truco",
+  "manos": [
+    [
+      "7-copa",
+      "6-copa",
+      "4-basto"
+    ],
+    [
+      "1-espada",
+      "1-basto",
+      "4-espada"
+    ]
+  ],
+  "acciones": [
+    [
+      "A",
+      "CALL_TRUCO"
+    ],
+    [
+      "B",
+      "CALL_ENVIDO"
+    ],
+    [
+      "A",
+      "ACCEPT"
+    ],
+    [
+      "B",
+      "ACCEPT"
+    ],
+    [
+      "A",
+      "PLAY_CARD",
+      "4-basto"
+    ],
+    [
+      "B",
+      "PLAY_CARD",
+      "1-espada"
+    ],
+    [
+      "B",
+      "PLAY_CARD",
+      "1-basto"
+    ],
+    [
+      "A",
+      "PLAY_CARD",
+      "7-copa"
+    ]
+  ],
+  "esperado": {
+    "resultadoMano": {
+      "winnerTeam": 1,
+      "points": 2,
+      "reason": "bazas"
+    },
+    "marcador": [
+      2,
+      2
+    ],
+    "fase": "hand_over",
+    "eventos": [
+      {
+        "type": "CALL",
+        "playerId": "A",
+        "call": "TRUCO"
+      },
+      {
+        "type": "CALL",
+        "playerId": "B",
+        "call": "ENVIDO"
+      },
+      {
+        "type": "RESPONSE",
+        "playerId": "A",
+        "response": "QUIERO"
+      },
+      {
+        "type": "ENVIDO_RESULT",
+        "accepted": true,
+        "tantos": {
+          "A": 33
+        },
+        "winnerTeam": 0,
+        "points": 2
+      },
+      {
+        "type": "RESPONSE",
+        "playerId": "B",
+        "response": "QUIERO"
+      }
+    ]
+  },
+  "revisado": {
+    "por": null,
+    "fecha": null,
+    "notas": "Pendiente de revisión por jugadores expertos (sección 11)."
+  }
+}

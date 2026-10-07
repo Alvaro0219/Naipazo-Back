@@ -1,0 +1,75 @@
+{
+  "rulesVersion": 1,
+  "modo": "2v2",
+  "objetivo": 15,
+  "marcador": [
+    0,
+    0
+  ],
+  "id": "15-2v2-empate-companeros",
+  "guion": 15,
+  "reglas": [
+    "R-BAZA-03"
+  ],
+  "titulo": "2 vs 2: empatan las dos cartas más altas y son de compañeros: gana su equipo y abre quien la jugó primero",
+  "manos": [
+    [
+      "3-espada",
+      "4-basto",
+      "5-copa"
+    ],
+    [
+      "4-copa",
+      "6-oro",
+      "7-copa"
+    ],
+    [
+      "3-oro",
+      "6-copa",
+      "10-oro"
+    ],
+    [
+      "5-oro",
+      "6-espada",
+      "10-copa"
+    ]
+  ],
+  "acciones": [
+    [
+      "A1",
+      "PLAY_CARD",
+      "3-espada"
+    ],
+    [
+      "B1",
+      "PLAY_CARD",
+      "4-copa"
+    ],
+    [
+      "A2",
+      "PLAY_CARD",
+      "3-oro"
+    ],
+    [
+      "B2",
+      "PLAY_CARD",
+      "5-oro"
+    ]
+  ],
+  "esperado": {
+    "fase": "playing",
+    "eventos": [
+      {
+        "type": "BAZA_WON",
+        "winnerTeam": 0,
+        "winnerPlayerId": "A1"
+      }
+    ],
+    "turno": "A1"
+  },
+  "revisado": {
+    "por": null,
+    "fecha": null,
+    "notas": "Pendiente de revisión por jugadores expertos (sección 11)."
+  }
+}

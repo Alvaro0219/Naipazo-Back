@@ -1,4 +1,5 @@
 import * as adminService from '../services/adminService.js';
+import * as integrityService from '../services/integrityService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { buildPaginatedResponse, getPagination } from '../utils/pagination.js';
 import { ok } from '../utils/response.js';
@@ -14,6 +15,15 @@ export const listUsers = asyncHandler(async (req, res) => {
 export const chipFlows = asyncHandler(async (req, res) => {
   const items = await adminService.chipFlows(req.validated);
   return ok(res, { items });
+});
+
+export const integritySummary = asyncHandler(async (req, res) => ok(res, await integrityService.getIntegritySummary()));
+
+export const runReconciliation = asyncHandler(async (req, res) => ok(res, await integrityService.reconcile()));
+
+export const resolveIncident = asyncHandler(async (req, res) => {
+  await integrityService.resolveIncident(req.params.id);
+  return ok(res, { resolved: true });
 });
 
 export const setUserStatus = asyncHandler(async (req, res) => {

@@ -37,7 +37,17 @@ function close(rt) {
 }
 
 function announce(rt, data) {
-  emitter.toMatch(rt.matchId, 'game:rematch', { matchId: rt.matchId, ...data });
+  // Se guarda el último aviso para reenviarlo a quien se reconecte (rematchStatusFor)
+  rt.rematchLast = { matchId: rt.matchId, ...data };
+  emitter.toMatch(rt.matchId, 'game:rematch', rt.rematchLast);
+}
+
+/** Al volver a entrar a una partida terminada: el último estado de la revancha (o null si nadie la pidió). */
+export function rematchStatusFor(matchId) {
+  const rt = matchService.getRuntime(matchId);
+  if (!rt?.finished || !rt.rematchLast) return null;
+  const entry = pending.get(rt.matchId);
+  return entry ? { ...rt.rematchLast, expiresInMs: Math.max(0, entry.expiresAt - Date.now()) } : rt.rematchLast;
 }
 
 /** Pedir la revancha, o aceptarla si el rival ya la había pedido. */

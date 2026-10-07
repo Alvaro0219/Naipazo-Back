@@ -113,7 +113,9 @@ function check(state, playerId, type, payload = {}) {
   }
 
   if (type === 'ACCEPT' || type === 'REJECT') {
-    if (!responding) throw new RuleError('NOTHING_TO_ANSWER', 'No hay ningún canto para responder');
+    if (!pending) throw new RuleError('NOTHING_TO_ANSWER', 'No hay ningún canto para responder');
+    // Hay un canto, pero lo responde otro (el que cantó, su compañero o el compañero del que responde)
+    if (!responding) throw new RuleError('NOT_YOUR_TURN', 'Este canto lo responde otro jugador');
     return;
   }
 

@@ -1,0 +1,64 @@
+{
+  "rulesVersion": 1,
+  "modo": "1v1",
+  "objetivo": 15,
+  "marcador": [
+    0,
+    0
+  ],
+  "id": "04-envido-empate-gana-mano",
+  "guion": 4,
+  "reglas": [
+    "R-ENV-05",
+    "R-ENV-07"
+  ],
+  "titulo": "Envido querido con empate de tantos (33 a 33): gana el mano y los tantos del pie no se muestran",
+  "manos": [
+    [
+      "7-copa",
+      "6-copa",
+      "4-basto"
+    ],
+    [
+      "7-oro",
+      "6-oro",
+      "4-espada"
+    ]
+  ],
+  "acciones": [
+    [
+      "A",
+      "CALL_ENVIDO"
+    ],
+    [
+      "B",
+      "ACCEPT"
+    ]
+  ],
+  "esperado": {
+    "marcador": [
+      2,
+      0
+    ],
+    "fase": "playing",
+    "eventos": [
+      {
+        "type": "ENVIDO_RESULT",
+        "accepted": true,
+        "tantos": {
+          "A": 33
+        },
+        "winnerTeam": 0,
+        "points": 2
+      }
+    ],
+    "tantosOcultos": [
+      "B"
+    ]
+  },
+  "revisado": {
+    "por": null,
+    "fecha": null,
+    "notas": "Pendiente de revisión por jugadores expertos (sección 11)."
+  }
+}

@@ -1,7 +1,7 @@
 import { randomInt } from 'node:crypto';
 import { env } from '../config/env.js';
 import {
-  PHASES, applyAction, applyTimeout, createMatchState, dealNextHand, forfeitMatch,
+  PHASES, RULES_VERSION, applyAction, applyTimeout, createMatchState, dealNextHand, forfeitMatch,
   getActingPlayerIds, projectStateFor, shuffleDeck
 } from '../game/truco/index.js';
 import { Match } from '../models/Match.js';
@@ -11,6 +11,9 @@ import { User } from '../models/User.js';
 import * as emitter from '../sockets/emitter.js';
 import { AppError } from '../utils/AppError.js';
 import { buildChipsSummary, settleMatchBets, settlePendingBets } from './betService.js';
+import {
+  auditMatch, recordIncident, settings as integritySettings, verifyTransition
+} from './integrityService.js';
 
 // Orquesta motor + apuestas + persistencia + timers + emisiones. Las partidas activas viven en
 // memoria (una sola instancia del backend en la Fase 1) y se persiste el resultado de cada mano.
@@ -101,8 +104,10 @@ export function startMatch({ match, room }) {
 
 function dealHand(rt) {
   if (rt.finished || rt.finishing) return;
+  const prev = rt.state;
   const { state, events } = dealNextHand(rt.state, shuffleDeck());
   rt.state = state;
+  if (!passesChecks(rt, prev)) return;
   rt.handLog = {
     matchId: rt.matchId,
     handNumber: state.hand.number,
@@ -136,11 +141,18 @@ function clearAllTimers(rt) {
 
 // ─── Acciones ─────────────────────────────────────────────
 
-function getActiveRuntime(matchId, userId) {
+/**
+ * `socketId` (desde los sockets): I-S1, una sola conexión de juego activa por jugador. Una pestaña reemplazada por
+ * otra (SESSION_REPLACED) ya no puede actuar en la partida.
+ */
+function getActiveRuntime(matchId, userId, socketId = null) {
   const rt = runtimes.get(String(matchId));
   if (!rt || rt.finished || rt.finishing) throw new AppError('La partida no está activa', 404, 'MATCH_NOT_ACTIVE');
   if (!rt.players.some((p) => p.id === userId)) {
     throw new AppError('No sos parte de esta partida', 403, 'NOT_A_PLAYER');
+  }
+  if (socketId && rt.sockets.get(userId) !== socketId) {
+    throw new AppError('Esta partida está abierta en otra pestaña o dispositivo', 409, 'SESSION_REPLACED');
   }
   return rt;
 }
@@ -149,17 +161,19 @@ function getActiveRuntime(matchId, userId) {
  * Aplica una intención de jugada. `actionId` (uuid del cliente) evita procesar dos veces
  * la misma acción si el cliente reintenta. Lanza RuleError/AppError si no es válida.
  */
-export async function handleAction(userId, { matchId, actionId, type, payload }) {
-  const rt = getActiveRuntime(matchId, userId);
+export async function handleAction(userId, { matchId, actionId, type, payload }, { socketId = null } = {}) {
+  const rt = getActiveRuntime(matchId, userId, socketId);
   if (rt.recentActionIds.includes(actionId)) return { duplicated: true };
 
   // El motor es síncrono: el estado se actualiza antes de cualquier await, así que dos
   // acciones que llegan juntas se procesan en orden y la segunda ve el estado nuevo.
+  const prev = rt.state;
   const { state, events } = applyAction(rt.state, userId, { type, payload });
   rt.recentActionIds.push(actionId);
   if (rt.recentActionIds.length > MAX_REMEMBERED_ACTIONS) rt.recentActionIds.shift();
   rt.state = state;
   rt.handLog.events.push({ action: type, playerId: userId, payload: payload ?? null, timestamp: new Date() });
+  if (!passesChecks(rt, prev)) return { frozen: true };
 
   publish(rt, events);
   await afterTransition(rt);
@@ -170,8 +184,8 @@ export async function handleAction(userId, { matchId, actionId, type, payload })
  * 2 vs 2: seña a su compañero. Llega SOLO al compañero (los rivales nunca la reciben), únicamente con una mano
  * en curso y como máximo una cada 2 s. Queda en el MatchHandLog para auditoría.
  */
-export function sendSign(userId, { matchId, sign }) {
-  const rt = getActiveRuntime(matchId, userId);
+export function sendSign(userId, { matchId, sign }, { socketId = null } = {}) {
+  const rt = getActiveRuntime(matchId, userId, socketId);
   if (rt.mode !== '2v2') throw new AppError('Las señas son solo para 2 vs 2', 400, 'SIGNS_NOT_AVAILABLE');
   if (!SIGNS.includes(sign)) throw new AppError('Esa seña no existe', 400, 'INVALID_SIGN');
   if (rt.state.phase !== PHASES.PLAYING || !rt.handLog) throw new AppError('Las señas se hacen durante la mano', 409, 'NO_HAND');
@@ -184,22 +198,24 @@ export function sendSign(userId, { matchId, sign }) {
   const partner = rt.state.players.find((p) => p.team === me.team && p.id !== userId);
   const entry = { from: userId, to: partner.id, sign, at: new Date(now).toISOString() };
   rt.handLog.signs.push(entry);
-  const socketId = rt.sockets.get(partner.id);
-  if (socketId) emitter.toSocket(socketId, 'game:sign', { matchId: rt.matchId, from: userId, sign, at: entry.at });
+  const partnerSocketId = rt.sockets.get(partner.id);
+  if (partnerSocketId) emitter.toSocket(partnerSocketId, 'game:sign', { matchId: rt.matchId, from: userId, sign, at: entry.at });
   return { sent: true };
 }
 
 /** El jugador abandona voluntariamente: pierde la partida (y la apuesta). */
-export async function abandonMatch(userId, matchId) {
-  const rt = getActiveRuntime(matchId, userId);
+export async function abandonMatch(userId, matchId, { socketId = null } = {}) {
+  const rt = getActiveRuntime(matchId, userId, socketId);
   await endByAbandon(rt, userId);
 }
 
 async function endByAbandon(rt, userId) {
   if (rt.finished || rt.finishing) return;
   const player = rt.state.players.find((p) => p.id === userId);
+  const prev = rt.state;
   const { state, events } = forfeitMatch(rt.state, player.team, 'abandon');
   rt.state = state;
+  if (!passesChecks(rt, prev)) return;
   rt.abandonedBy = userId;
   // 2 vs 2: si en ese momento el compañero también estaba desconectado, abandonaron los dos
   const partner = rt.state.players.find((p) => p.team === player.team && p.id !== userId);
@@ -212,9 +228,11 @@ async function endByAbandon(rt, userId) {
 async function onTurnTimeout(rt) {
   rt.turn = null;
   if (rt.finished || rt.finishing || rt.state.phase !== PHASES.PLAYING) return;
+  const prev = rt.state;
   const { state, events, playerId } = applyTimeout(rt.state);
   rt.state = state;
   rt.handLog.events.push({ action: 'TIMEOUT', playerId, payload: null, timestamp: new Date() });
+  if (!passesChecks(rt, prev)) return;
   publish(rt, events);
   try {
     await afterTransition(rt);
@@ -304,12 +322,60 @@ async function finishMatch(rt) {
   emitter.toMatch(rt.matchId, 'game:finished', summary);
   schedule(rt, () => runtimes.delete(rt.matchId), settings.finishedTtlMs);
 
+  // 10.2: auditoría en segundo plano (vuelve a jugar la partida desde el registro y compara)
+  if (integritySettings.auditEnabled) {
+    setImmediate(() => auditMatch(rt.matchId).catch((err) => console.error(`No se pudo auditar la partida ${rt.matchId}:`, err)));
+  }
+
   const loserIds = state.players.filter((p) => p.team !== state.winnerTeam).map((p) => p.id);
   for (const listener of finishedListeners) {
     try {
       listener({ ...summary, roomId: rt.roomId, loserIds });
     } catch (err) {
       console.error(`Error en un aviso de fin de la partida ${rt.matchId}:`, err);
+    }
+  }
+}
+
+// ─── Integridad (EXACTITUD_DEL_JUEGO.md, 10.1) ──────────────
+
+/**
+ * Verifica los invariantes después de una transición. Si alguno falla, NO se publica el estado: la partida se
+ * congela (se devuelven las apuestas, queda todo registrado) y se devuelve false para cortar el flujo.
+ */
+function passesChecks(rt, prev) {
+  const violations = verifyTransition(prev, rt.state);
+  if (!violations.length) return true;
+  rt.finishing = true;
+  freezeMatch(rt, violations, prev).catch((err) => console.error(`No se pudo congelar la partida ${rt.matchId}:`, err));
+  return false;
+}
+
+const FROZEN_MESSAGE = 'Partida suspendida por una verificación. Se devolvieron las fichas.';
+
+async function freezeMatch(rt, violations, prev) {
+  clearAllTimers(rt);
+  const details = JSON.parse(JSON.stringify({ violations, prev, next: rt.state, handLog: rt.handLog }));
+  await Match.updateOne({ _id: rt.matchId }, { status: 'cancelled', endReason: 'frozen', endedAt: new Date() });
+  await Room.updateOne({ _id: rt.roomId }, { status: 'cancelled', cancelReason: 'frozen' });
+  try {
+    rt.chips = await settleMatchBets(rt.matchId); // cancelada: devuelve todas las apuestas
+  } catch (err) {
+    console.error(`No se pudieron devolver las apuestas de la partida congelada ${rt.matchId}:`, err);
+  }
+  await recordIncident('invariant', `Partida congelada: ${violations.map((v) => `${v.id} (${v.message})`).join('; ')}`, {
+    matchId: rt.matchId, details, rulesVersion: RULES_VERSION
+  });
+  rt.finished = true;
+  rt.finishing = false;
+  rt.frozen = true;
+  emitter.toMatch(rt.matchId, 'game:frozen', { matchId: rt.matchId, message: FROZEN_MESSAGE });
+  schedule(rt, () => runtimes.delete(rt.matchId), settings.finishedTtlMs);
+  for (const listener of finishedListeners) {
+    try {
+      listener({ matchId: rt.matchId, roomId: rt.roomId, tournamentId: rt.tournamentId, round: rt.round, frozen: true, winnerIds: [], loserIds: [] });
+    } catch (err) {
+      console.error(`Error en un aviso de partida congelada ${rt.matchId}:`, err);
     }
   }
 }

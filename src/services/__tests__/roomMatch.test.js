@@ -422,7 +422,7 @@ describe.skipIf(!hasTestDb)('salas y partidas (integración)', () => {
       await expect(matchService.handleAction(outsider.id, { matchId, actionId: randomUUID(), type: 'ACCEPT' }))
         .rejects.toMatchObject({ code: 'NOT_A_PLAYER' });
       await expect(matchService.handleAction(mano, { matchId, actionId: randomUUID(), type: 'ACCEPT' }))
-        .rejects.toMatchObject({ code: 'NOTHING_TO_ANSWER' });
+        .rejects.toMatchObject({ code: 'NOT_YOUR_TURN' });
     });
 
     it('una nueva conexión del mismo jugador reemplaza a la anterior', async () => {

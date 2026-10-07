@@ -165,6 +165,29 @@ Corren en serie (`fileParallelism: false`) contra Atlas (~8 min). `connectTestDb
 - **Historial/ranking:** `mode`, `partner`, `rivals`; ranking con `mode` (1v1 lee `stats`, 2v2 `statsTwoVsTwo`).
   Tests de integración: `twoVsTwo.test.js`.
 
+## Exactitud del juego (`../EXACTITUD_DEL_JUEGO.md`)
+
+- **Reglas con id** (`R-…`) en `docs/TRUCO_RULES.md` (decisiones D-1..D-10, `RULES_VERSION` en `game/truco/rules.js`, guardada en
+  cada `Match.rulesVersion`). Cada id aparece en el título de al menos un test: `npm run rules:trace` lo verifica.
+  La matriz de cantos se genera con `npm run rules:matrix` desde `__tests__/matrix.js`.
+- **Tests del motor:** oráculo independiente (`__tests__/oracle.js`, sin imports del motor) contra todos los casos chicos;
+  propiedades con fast-check (`PROPS_RUNS`, 10.000 por defecto) sobre los invariantes de `game/truco/invariants.js`;
+  repeticiones de referencia en `fixtures/replays/` (guiones de la sección 11). Cobertura del motor al 100 % (`npm run test:coverage`,
+  con umbral) y mutación con Stryker ≥ 90 % (`npm run test:mutation`, ~17 min). Nocturna: `npm run test:nightly`.
+  Barajado: `npm run test:shuffle` (chi cuadrado con 5 millones y un control sesgado que tiene que fallar).
+- **En producción** (`services/integrityService.js`): `matchService` corre `checkInvariants` después de cada transición; si
+  falla, **congela** la partida (`endReason: 'frozen'`, apuestas devueltas, `Incident` con el estado, `game:frozen` a la mesa; un
+  torneo con una partida congelada se cancela y devuelve todo). Cada partida terminada se **audita** en segundo plano
+  (`auditMatch`: se vuelve a jugar desde `MatchHandLog` y se comparan resultado y pagos; `Match.audit`). **Conciliación**
+  diaria de fichas (`reconcile`: saldo = ledger, partidas y torneos cuadran, conservación global). Panel: `GET /api/admin/integrity`,
+  `POST /api/admin/integrity/reconcile`, `POST /api/admin/incidents/:id/resolve`. En tests `settings.check` se reemplaza para
+  simular un invariante roto y la auditoría en segundo plano está apagada.
+- **I-S1:** las acciones, señas y abandonos que llegan por socket llevan `socketId`; si no es la conexión de juego vigente
+  (otra pestaña la reemplazó) se rechazan con `SESSION_REPLACED`. Al volver a entrar a una partida terminada, `room:join`
+  reenvía el último `game:rematch` (`rematchService.rematchStatusFor`).
+- **Tiempo real con sockets reales:** `services/__tests__/realtime.test.js` levanta un Socket.IO de verdad y usa
+  `socket.io-client` (sección 7: doble clic, simultáneas, reloj, reconexiones, dos pestañas, 10 partidas simultáneas, basura).
+
 ## Hitos
 
 M0–M7 hechos (scaffold, auth, billetera, motor, salas + mesa, apuestas + timers + abandono, historial +

@@ -1,0 +1,55 @@
+{
+  "rulesVersion": 1,
+  "modo": "1v1",
+  "objetivo": 30,
+  "marcador": [
+    14,
+    0
+  ],
+  "id": "14b-a-30-dieciseis-buenas",
+  "guion": 14,
+  "reglas": [
+    "R-PUNT-03",
+    "R-MAZO-IR-01"
+  ],
+  "titulo": "Partida a 30: con 16 se pasa a buenas",
+  "manos": [
+    [
+      "4-copa",
+      "5-oro",
+      "6-basto"
+    ],
+    [
+      "4-espada",
+      "5-copa",
+      "6-oro"
+    ]
+  ],
+  "acciones": [
+    [
+      "A",
+      "PLAY_CARD",
+      "4-copa"
+    ],
+    [
+      "B",
+      "GO_TO_DECK"
+    ]
+  ],
+  "esperado": {
+    "marcador": [
+      16,
+      0
+    ],
+    "fase": "hand_over",
+    "secciones": [
+      "buenas",
+      "malas"
+    ]
+  },
+  "revisado": {
+    "por": null,
+    "fecha": null,
+    "notas": "Pendiente de revisión por jugadores expertos (sección 11)."
+  }
+}

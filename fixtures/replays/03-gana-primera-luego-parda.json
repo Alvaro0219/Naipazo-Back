@@ -1,0 +1,77 @@
+{
+  "rulesVersion": 1,
+  "modo": "1v1",
+  "objetivo": 15,
+  "marcador": [
+    0,
+    0
+  ],
+  "id": "03-gana-primera-luego-parda",
+  "guion": 3,
+  "reglas": [
+    "R-MANO-01"
+  ],
+  "titulo": "Gana la primera A, la segunda B y la tercera es parda: gana A",
+  "manos": [
+    [
+      "3-espada",
+      "4-copa",
+      "6-basto"
+    ],
+    [
+      "2-espada",
+      "5-copa",
+      "6-oro"
+    ]
+  ],
+  "acciones": [
+    [
+      "A",
+      "PLAY_CARD",
+      "3-espada"
+    ],
+    [
+      "B",
+      "PLAY_CARD",
+      "2-espada"
+    ],
+    [
+      "A",
+      "PLAY_CARD",
+      "4-copa"
+    ],
+    [
+      "B",
+      "PLAY_CARD",
+      "5-copa"
+    ],
+    [
+      "B",
+      "PLAY_CARD",
+      "6-oro"
+    ],
+    [
+      "A",
+      "PLAY_CARD",
+      "6-basto"
+    ]
+  ],
+  "esperado": {
+    "resultadoMano": {
+      "winnerTeam": 0,
+      "points": 1,
+      "reason": "bazas"
+    },
+    "marcador": [
+      1,
+      0
+    ],
+    "fase": "hand_over",
+    "bazasJugadas": 3
+  },
+  "revisado": {
+    "por": null,
+    "fecha": null,
+    "notas": "Pendiente de revisión por jugadores expertos (sección 11)."
+  }
+}

@@ -11,6 +11,7 @@ import apiRoutes from './routes/index.js';
 import { recoverOnStartup } from './services/matchService.js';
 import { recoverOnStartup as recoverTournamentsOnStartup } from './services/tournamentService.js';
 import { startExpiryScheduler } from './services/expiryService.js';
+import { startIntegrityScheduler } from './services/integrityService.js';
 import { initSockets } from './sockets/index.js';
 import { AppError } from './utils/AppError.js';
 import { fail } from './utils/response.js';
@@ -78,6 +79,8 @@ export async function startServer() {
   await recoverTournamentsOnStartup();
   // Salas y torneos en espera vencen solos (también los que vencieron con el server apagado)
   startExpiryScheduler();
+  // Conciliación diaria de fichas (EXACTITUD_DEL_JUEGO.md, 10.3)
+  startIntegrityScheduler();
 
   // Socket.IO se monta sobre el mismo servidor HTTP
   const server = http.createServer(app);

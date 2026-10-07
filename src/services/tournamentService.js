@@ -339,9 +339,22 @@ async function startBracketMatch(tournamentId, round, slot) {
 }
 
 /** Terminó una partida del torneo: el ganador avanza (o es campeón) y el perdedor queda eliminado. */
-export async function onMatchFinished({ tournamentId, matchId, round, winnerIds, loserIds }) {
+export async function onMatchFinished({ tournamentId, matchId, round, winnerIds, loserIds, frozen = false }) {
   const t = await Tournament.findById(tournamentId).lean();
   if (!t || t.status !== 'playing') return;
+  if (frozen) {
+    // Una partida congelada por una verificación: nadie avanza; se cancela el torneo y se devuelve todo (R-ECO-05)
+    const cancelled = await Tournament.findOneAndUpdate(
+      { _id: tournamentId, status: 'playing' },
+      { status: 'cancelled', settled: false, endedAt: new Date() },
+      { new: true }
+    );
+    if (cancelled) {
+      await settleTournament(cancelled._id);
+      notifyTournament(cancelled);
+    }
+    return;
+  }
   const match = t.bracket.find((m) => String(m.matchId) === String(matchId));
   if (!match || match.status === 'finished') return;
   const winnerId = winnerIds[0];

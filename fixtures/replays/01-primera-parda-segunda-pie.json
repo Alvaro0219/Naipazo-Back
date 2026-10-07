@@ -1,0 +1,69 @@
+{
+  "rulesVersion": 1,
+  "modo": "1v1",
+  "objetivo": 15,
+  "marcador": [
+    0,
+    0
+  ],
+  "id": "01-primera-parda-segunda-pie",
+  "guion": 1,
+  "reglas": [
+    "R-MANO-01",
+    "R-MANO-02",
+    "R-TURNO-02"
+  ],
+  "titulo": "Primera parda, la segunda la gana el pie: gana el pie, sin jugar la tercera",
+  "manos": [
+    [
+      "4-copa",
+      "5-oro",
+      "6-basto"
+    ],
+    [
+      "4-espada",
+      "6-oro",
+      "5-copa"
+    ]
+  ],
+  "acciones": [
+    [
+      "A",
+      "PLAY_CARD",
+      "4-copa"
+    ],
+    [
+      "B",
+      "PLAY_CARD",
+      "4-espada"
+    ],
+    [
+      "A",
+      "PLAY_CARD",
+      "5-oro"
+    ],
+    [
+      "B",
+      "PLAY_CARD",
+      "6-oro"
+    ]
+  ],
+  "esperado": {
+    "resultadoMano": {
+      "winnerTeam": 1,
+      "points": 1,
+      "reason": "bazas"
+    },
+    "marcador": [
+      0,
+      1
+    ],
+    "fase": "hand_over",
+    "bazasJugadas": 2
+  },
+  "revisado": {
+    "por": null,
+    "fecha": null,
+    "notas": "Pendiente de revisión por jugadores expertos (sección 11)."
+  }
+}

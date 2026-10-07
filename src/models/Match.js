@@ -26,7 +26,10 @@ const MatchSchema = new mongoose.Schema({
   score: { type: [Number], default: [0, 0] },
   handsPlayed: { type: Number, default: 0 },
   winnerTeam: { type: Number, enum: [0, 1, null], default: null },
-  endReason: { type: String, enum: ['normal', 'abandon', 'timeout', 'cancelled', null], default: null },
+  // frozen: congelada por una verificación de integridad (se devuelven las apuestas)
+  endReason: { type: String, enum: ['normal', 'abandon', 'timeout', 'cancelled', 'frozen', null], default: null },
+  // Auditoría al terminar: la partida se vuelve a jugar desde el registro y se compara (integrityService)
+  audit: { status: { type: String, enum: ['ok', 'failed', 'skipped', null], default: null }, checkedAt: Date, diffs: [String] },
   abandonedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   // M8: todos los que abandonaron (en 2 vs 2 pueden ser los dos de un equipo)
   abandoners: { type: [mongoose.Schema.Types.ObjectId], default: [] },

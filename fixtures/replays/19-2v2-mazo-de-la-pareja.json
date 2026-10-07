@@ -1,0 +1,61 @@
+{
+  "rulesVersion": 1,
+  "modo": "2v2",
+  "objetivo": 15,
+  "marcador": [
+    0,
+    0
+  ],
+  "id": "19-2v2-mazo-de-la-pareja",
+  "guion": 19,
+  "reglas": [
+    "R-MAZO-IR-01",
+    "R-MAZO-IR-03"
+  ],
+  "titulo": "2 vs 2: se va uno al mazo y pierde la mano su pareja (1 + 1 por la primera baza con envido posible)",
+  "manos": [
+    [
+      "4-copa",
+      "5-oro",
+      "6-basto"
+    ],
+    [
+      "4-espada",
+      "5-copa",
+      "6-oro"
+    ],
+    [
+      "4-basto",
+      "5-espada",
+      "6-copa"
+    ],
+    [
+      "4-oro",
+      "5-basto",
+      "6-espada"
+    ]
+  ],
+  "acciones": [
+    [
+      "A1",
+      "GO_TO_DECK"
+    ]
+  ],
+  "esperado": {
+    "resultadoMano": {
+      "winnerTeam": 1,
+      "points": 2,
+      "reason": "deck"
+    },
+    "marcador": [
+      0,
+      2
+    ],
+    "fase": "hand_over"
+  },
+  "revisado": {
+    "por": null,
+    "fecha": null,
+    "notas": "Pendiente de revisión por jugadores expertos (sección 11)."
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "rulesVersion": 1,
+  "modo": "1v1",
+  "objetivo": 15,
+  "marcador": [
+    0,
+    0
+  ],
+  "id": "06-envido-envido-real-no-querido",
+  "guion": 6,
+  "reglas": [
+    "R-ENV-02"
+  ],
+  "titulo": "Envido, envido, real envido no querido: suma 4 quien cantó el último",
+  "manos": [
+    [
+      "4-copa",
+      "5-oro",
+      "6-basto"
+    ],
+    [
+      "4-espada",
+      "5-copa",
+      "6-oro"
+    ]
+  ],
+  "acciones": [
+    [
+      "A",
+      "CALL_ENVIDO"
+    ],
+    [
+      "B",
+      "CALL_ENVIDO"
+    ],
+    [
+      "A",
+      "CALL_REAL_ENVIDO"
+    ],
+    [
+      "B",
+      "REJECT"
+    ]
+  ],
+  "esperado": {
+    "marcador": [
+      4,
+      0
+    ],
+    "fase": "playing",
+    "eventos": [
+      {
+        "type": "ENVIDO_RESULT",
+        "accepted": false,
+        "winnerTeam": 0,
+        "points": 4
+      }
+    ]
+  },
+  "revisado": {
+    "por": null,
+    "fecha": null,
+    "notas": "Pendiente de revisión por jugadores expertos (sección 11)."
+  }
+}

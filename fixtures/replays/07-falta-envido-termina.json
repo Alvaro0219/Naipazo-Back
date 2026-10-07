@@ -1,0 +1,61 @@
+{
+  "rulesVersion": 1,
+  "modo": "1v1",
+  "objetivo": 15,
+  "marcador": [
+    10,
+    12
+  ],
+  "id": "07-falta-envido-termina",
+  "guion": 7,
+  "reglas": [
+    "R-ENV-04",
+    "R-ENV-07",
+    "R-FIN-01"
+  ],
+  "titulo": "Falta envido querido que termina la partida a mitad de la mano (10 a 12, gana B con 33)",
+  "manos": [
+    [
+      "10-copa",
+      "11-copa",
+      "4-basto"
+    ],
+    [
+      "7-oro",
+      "6-oro",
+      "4-espada"
+    ]
+  ],
+  "acciones": [
+    [
+      "A",
+      "CALL_FALTA_ENVIDO"
+    ],
+    [
+      "B",
+      "ACCEPT"
+    ]
+  ],
+  "esperado": {
+    "marcador": [
+      10,
+      15
+    ],
+    "fase": "finished",
+    "ganador": 1,
+    "motivo": "normal",
+    "eventos": [
+      {
+        "type": "ENVIDO_RESULT",
+        "accepted": true,
+        "winnerTeam": 1,
+        "points": 3
+      }
+    ]
+  },
+  "revisado": {
+    "por": null,
+    "fecha": null,
+    "notas": "Pendiente de revisión por jugadores expertos (sección 11)."
+  }
+}

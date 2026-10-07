@@ -8,3 +8,5 @@ coverage/
 *.local.md
 playwright-report/
 test-results/
+.stryker-tmp/
+reports/

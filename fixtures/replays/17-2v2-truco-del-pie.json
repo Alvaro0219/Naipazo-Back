@@ -1,0 +1,67 @@
+{
+  "rulesVersion": 1,
+  "modo": "2v2",
+  "objetivo": 15,
+  "marcador": [
+    0,
+    0
+  ],
+  "id": "17-2v2-truco-del-pie",
+  "guion": 17,
+  "reglas": [
+    "R-TRUCO-04"
+  ],
+  "titulo": "2 vs 2: el pie canta truco; lo responde solo el rival más mano y su compañero no tiene botones",
+  "manos": [
+    [
+      "4-copa",
+      "5-oro",
+      "6-basto"
+    ],
+    [
+      "4-espada",
+      "5-copa",
+      "6-oro"
+    ],
+    [
+      "4-basto",
+      "5-espada",
+      "6-copa"
+    ],
+    [
+      "4-oro",
+      "5-basto",
+      "6-espada"
+    ]
+  ],
+  "acciones": [
+    [
+      "A1",
+      "PLAY_CARD",
+      "4-copa"
+    ],
+    [
+      "B1",
+      "PLAY_CARD",
+      "4-espada"
+    ],
+    [
+      "A2",
+      "CALL_TRUCO"
+    ]
+  ],
+  "esperado": {
+    "fase": "playing",
+    "responde": "B1",
+    "sinAcciones": [
+      "A1",
+      "A2",
+      "B2"
+    ]
+  },
+  "revisado": {
+    "por": null,
+    "fecha": null,
+    "notas": "Pendiente de revisión por jugadores expertos (sección 11)."
+  }
+}

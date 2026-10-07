@@ -4,10 +4,11 @@ import { projectStateFor } from '../views.js';
 import { seededRng } from './helpers.js';
 import { simulateMatch } from './simulation.js';
 
-const MATCHES_PER_CONFIG = 300;
-const MATCHES_2V2_PER_CONFIG = 60;
+// SIM_MATCHES cambia la cantidad (la corrida nocturna usa 100.000 por modo y configuración; la mutación, pocas)
+const MATCHES_PER_CONFIG = Number(process.env.SIM_MATCHES || 300);
+const MATCHES_2V2_PER_CONFIG = Math.max(1, Math.round(MATCHES_PER_CONFIG / 5));
 // 300 partidas completas por configuración: es CPU puro y en una máquina cargada pasa los 30 s por defecto
-const SIMULATION_TIMEOUT_MS = 120000;
+const SIMULATION_TIMEOUT_MS = Math.max(120000, MATCHES_PER_CONFIG * 400);
 
 describe('partidas simuladas entre bots aleatorios', () => {
   it.each([15, 30])('a %i puntos siempre terminan sin errores', (targetPoints) => {

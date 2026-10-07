@@ -1,0 +1,78 @@
+{
+  "rulesVersion": 1,
+  "modo": "1v1",
+  "objetivo": 15,
+  "marcador": [
+    0,
+    0
+  ],
+  "id": "02-tres-pardas",
+  "guion": 2,
+  "reglas": [
+    "R-MANO-01",
+    "R-TURNO-02"
+  ],
+  "titulo": "Tres pardas: gana el mano",
+  "manos": [
+    [
+      "4-copa",
+      "5-oro",
+      "6-basto"
+    ],
+    [
+      "4-espada",
+      "5-copa",
+      "6-oro"
+    ]
+  ],
+  "acciones": [
+    [
+      "A",
+      "PLAY_CARD",
+      "4-copa"
+    ],
+    [
+      "B",
+      "PLAY_CARD",
+      "4-espada"
+    ],
+    [
+      "A",
+      "PLAY_CARD",
+      "5-oro"
+    ],
+    [
+      "B",
+      "PLAY_CARD",
+      "5-copa"
+    ],
+    [
+      "A",
+      "PLAY_CARD",
+      "6-basto"
+    ],
+    [
+      "B",
+      "PLAY_CARD",
+      "6-oro"
+    ]
+  ],
+  "esperado": {
+    "resultadoMano": {
+      "winnerTeam": 0,
+      "points": 1,
+      "reason": "bazas"
+    },
+    "marcador": [
+      1,
+      0
+    ],
+    "fase": "hand_over",
+    "bazasJugadas": 3
+  },
+  "revisado": {
+    "por": null,
+    "fecha": null,
+    "notas": "Pendiente de revisión por jugadores expertos (sección 11)."
+  }
+}

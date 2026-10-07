@@ -30,7 +30,7 @@ const RoomSchema = new mongoose.Schema({
   readyIds: { type: [mongoose.Schema.Types.ObjectId], default: [] },
   status: { type: String, enum: ROOM_STATUSES, default: 'waiting', index: true },
   // P6: por qué se canceló (null = la canceló el anfitrión)
-  cancelReason: { type: String, enum: ['expired', null], default: null },
+  cancelReason: { type: String, enum: ['expired', 'frozen', null], default: null },
   matchId: { type: mongoose.Schema.Types.ObjectId, ref: 'Match', default: null },
   rematchOf: { type: mongoose.Schema.Types.ObjectId, ref: 'Room', default: null }, // sala de origen de una revancha
   tournamentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tournament', default: null, index: true }, // sala de torneo: no va al lobby

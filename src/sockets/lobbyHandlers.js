@@ -1,5 +1,6 @@
 import { roomRefSchema, tournamentRefSchema, validateSocketPayload } from '../schemas/socket.schemas.js';
 import * as matchService from '../services/matchService.js';
+import * as rematchService from '../services/rematchService.js';
 import * as roomService from '../services/roomService.js';
 import * as tournamentService from '../services/tournamentService.js';
 import { AppError } from '../utils/AppError.js';
@@ -24,6 +25,9 @@ export function registerLobbyHandlers(socket) {
     socket.emit('room:update', room);
     if (room.matchId && room.status !== 'cancelled') {
       await matchService.attachSocket(room.matchId, user.id, socket);
+      // Reconexión con la partida terminada: cómo quedó la revancha mientras no estaba
+      const rematch = rematchService.rematchStatusFor(room.matchId);
+      if (rematch) socket.emit('game:rematch', rematch);
     }
   }));
 

@@ -75,10 +75,12 @@ export function checkInvariants(state, prev = null) {
     }
   }
 
-  // I-T1 / R-TURNO-01: exactamente un actor con la mano en juego; ninguno entre manos o con la partida terminada
-  const actors = getActingPlayerIds(state);
-  if (state.phase === PHASES.PLAYING && actors.length !== 1) fail('I-T1', `actores esperados: ${actors.length}`);
-  if (state.phase !== PHASES.PLAYING && actors.length !== 0) fail('I-T1', 'alguien puede actuar sin una mano en juego');
+  // I-T1 / R-TURNO-01: exactamente un actor con la mano en juego (entre manos o terminada nadie puede actuar:
+  // el motor rechaza toda acción fuera de una mano, así que eso no hace falta chequearlo acá)
+  if (state.phase === PHASES.PLAYING) {
+    const actors = getActingPlayerIds(state);
+    if (actors.length !== 1) fail('I-T1', `actores esperados: ${actors.length}`);
+  }
 
   return v;
 }

@@ -1,0 +1,83 @@
+{
+  "rulesVersion": 1,
+  "modo": "1v1",
+  "objetivo": 15,
+  "marcador": [
+    0,
+    0
+  ],
+  "id": "08-vale-cuatro-querido",
+  "guion": 8,
+  "reglas": [
+    "R-TRUCO-01",
+    "R-TRUCO-02"
+  ],
+  "titulo": "Truco, retruco, vale cuatro querido: la mano vale 4",
+  "manos": [
+    [
+      "1-espada",
+      "1-basto",
+      "7-espada"
+    ],
+    [
+      "4-copa",
+      "5-oro",
+      "6-basto"
+    ]
+  ],
+  "acciones": [
+    [
+      "A",
+      "CALL_TRUCO"
+    ],
+    [
+      "B",
+      "CALL_RETRUCO"
+    ],
+    [
+      "A",
+      "CALL_VALE_CUATRO"
+    ],
+    [
+      "B",
+      "ACCEPT"
+    ],
+    [
+      "A",
+      "PLAY_CARD",
+      "1-espada"
+    ],
+    [
+      "B",
+      "PLAY_CARD",
+      "4-copa"
+    ],
+    [
+      "A",
+      "PLAY_CARD",
+      "1-basto"
+    ],
+    [
+      "B",
+      "PLAY_CARD",
+      "5-oro"
+    ]
+  ],
+  "esperado": {
+    "resultadoMano": {
+      "winnerTeam": 0,
+      "points": 4,
+      "reason": "bazas"
+    },
+    "marcador": [
+      4,
+      0
+    ],
+    "fase": "hand_over"
+  },
+  "revisado": {
+    "por": null,
+    "fecha": null,
+    "notas": "Pendiente de revisión por jugadores expertos (sección 11)."
+  }
+}

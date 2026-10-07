@@ -1,0 +1,54 @@
+{
+  "rulesVersion": 1,
+  "modo": "1v1",
+  "objetivo": 15,
+  "marcador": [
+    0,
+    0
+  ],
+  "id": "12b-canto-vencido",
+  "guion": 12,
+  "reglas": [
+    "R-TIEMPO-02"
+  ],
+  "titulo": "Vence un canto pendiente: es \"no quiero\"",
+  "manos": [
+    [
+      "4-copa",
+      "5-oro",
+      "6-basto"
+    ],
+    [
+      "4-espada",
+      "5-copa",
+      "6-oro"
+    ]
+  ],
+  "acciones": [
+    [
+      "A",
+      "CALL_TRUCO"
+    ],
+    [
+      "B",
+      "TIMEOUT"
+    ]
+  ],
+  "esperado": {
+    "resultadoMano": {
+      "winnerTeam": 0,
+      "points": 1,
+      "reason": "truco_rejected"
+    },
+    "marcador": [
+      1,
+      0
+    ],
+    "fase": "hand_over"
+  },
+  "revisado": {
+    "por": null,
+    "fecha": null,
+    "notas": "Pendiente de revisión por jugadores expertos (sección 11)."
+  }
+}

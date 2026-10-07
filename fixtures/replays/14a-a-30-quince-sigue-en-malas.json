@@ -1,0 +1,53 @@
+{
+  "rulesVersion": 1,
+  "modo": "1v1",
+  "objetivo": 30,
+  "marcador": [
+    14,
+    0
+  ],
+  "id": "14a-a-30-quince-sigue-en-malas",
+  "guion": 14,
+  "reglas": [
+    "R-PUNT-03"
+  ],
+  "titulo": "Partida a 30: con 15 justos se sigue en malas",
+  "manos": [
+    [
+      "4-copa",
+      "5-oro",
+      "6-basto"
+    ],
+    [
+      "4-espada",
+      "5-copa",
+      "6-oro"
+    ]
+  ],
+  "acciones": [
+    [
+      "A",
+      "CALL_TRUCO"
+    ],
+    [
+      "B",
+      "REJECT"
+    ]
+  ],
+  "esperado": {
+    "marcador": [
+      15,
+      0
+    ],
+    "fase": "hand_over",
+    "secciones": [
+      "malas",
+      "malas"
+    ]
+  },
+  "revisado": {
+    "por": null,
+    "fecha": null,
+    "notas": "Pendiente de revisión por jugadores expertos (sección 11)."
+  }
+}

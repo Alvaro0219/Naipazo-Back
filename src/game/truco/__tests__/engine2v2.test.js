@@ -111,8 +111,8 @@ describe('2 vs 2: quién responde un canto (el rival más mano)', () => {
     expect(r.state.hand.pending.responderSeat).toBe(1);
     expect(getActingPlayerIds(r.state)).toEqual([B1]);
     expect(getAvailableActions(r.state, B2)).toEqual([]);
-    expect(() => applyAction(r.state, B2, { type: 'ACCEPT' })).toThrow(expect.objectContaining({ code: 'NOTHING_TO_ANSWER' }));
-    expect(() => applyAction(r.state, A1, { type: 'ACCEPT' })).toThrow(expect.objectContaining({ code: 'NOTHING_TO_ANSWER' }));
+    expect(() => applyAction(r.state, B2, { type: 'ACCEPT' })).toThrow(expect.objectContaining({ code: 'NOT_YOUR_TURN' }));
+    expect(() => applyAction(r.state, A1, { type: 'ACCEPT' })).toThrow(expect.objectContaining({ code: 'NOT_YOUR_TURN' }));
     expect(projectStateFor(r.state, B2).hand.pending.responderId).toBe(B1);
   });
 

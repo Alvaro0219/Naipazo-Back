@@ -14,7 +14,11 @@
     "test:watch": "vitest",
     "make-admin": "node scripts/makeAdmin.js",
     "rules:trace": "node scripts/check-rule-ids.mjs",
-    "rules:matrix": "node scripts/render-matrix.mjs"
+    "rules:matrix": "node scripts/render-matrix.mjs",
+    "test:coverage": "vitest run src/game --coverage",
+    "test:nightly": "cross-env PROPS_RUNS=1000000 SIM_MATCHES=100000 vitest run src/game",
+    "test:mutation": "stryker run",
+    "test:shuffle": "node scripts/shuffle-stats.mjs"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -31,7 +35,12 @@
     "uuid": "^11.1.1"
   },
   "devDependencies": {
+    "@stryker-mutator/core": "^10.0.0",
+    "@stryker-mutator/vitest-runner": "^10.0.0",
+    "@vitest/coverage-v8": "^3.2.7",
+    "cross-env": "^10.1.0",
     "fast-check": "^4.10.2",
+    "socket.io-client": "^4.8.1",
     "vitest": "^3.2.4"
   }
 }
