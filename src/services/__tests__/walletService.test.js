@@ -38,7 +38,7 @@ describe.skipIf(!hasTestDb)('walletService (integración)', () => {
   beforeEach(resetTestDb);
 
   describe('claimDailyGrantIfDue', () => {
-    it('acredita 1000 fichas la primera vez del día y no de nuevo ese día', async () => {
+    it('R-ECO-01: acredita 1000 fichas la primera vez del día y no de nuevo ese día', async () => {
       const user = await createUser();
       const first = await claimDailyGrantIfDue(user._id, DAY_1);
       const second = await claimDailyGrantIfDue(user._id, DAY_1_LATE);
@@ -51,7 +51,7 @@ describe.skipIf(!hasTestDb)('walletService (integración)', () => {
       await expectBalanceMatchesLedger(user._id);
     });
 
-    it('no duplica el crédito con muchas llamadas concurrentes', async () => {
+    it('R-ECO-01: no duplica el crédito con muchas llamadas concurrentes', async () => {
       const user = await createUser();
       const results = await Promise.all(
         Array.from({ length: 10 }, () => claimDailyGrantIfDue(user._id, DAY_1))
@@ -62,7 +62,7 @@ describe.skipIf(!hasTestDb)('walletService (integración)', () => {
       expect(await LedgerEntry.countDocuments({ userId: user._id })).toBe(1);
     });
 
-    it('vuelve a acreditar al día siguiente y no acumula días sin entrar', async () => {
+    it('R-ECO-01: vuelve a acreditar al día siguiente y no acumula días sin entrar', async () => {
       const user = await createUser();
       await claimDailyGrantIfDue(user._id, DAY_1);
       expect((await claimDailyGrantIfDue(user._id, DAY_2)).granted).toBe(true);
@@ -80,7 +80,7 @@ describe.skipIf(!hasTestDb)('walletService (integración)', () => {
   });
 
   describe('apuestas', () => {
-    it('bloquea, paga y mantiene el saldo igual a la suma del ledger', async () => {
+    it('R-ECO-09: bloquea, paga y mantiene el saldo igual a la suma del ledger', async () => {
       const a = await createUser();
       const b = await createUser();
       await claimDailyGrantIfDue(a._id, DAY_1);
@@ -125,7 +125,7 @@ describe.skipIf(!hasTestDb)('walletService (integración)', () => {
       expect(await LedgerEntry.countDocuments({ type: 'BET_LOCK' })).toBe(0);
     });
 
-    it('es idempotente: repetir el mismo bloqueo o pago no duplica', async () => {
+    it('R-ECO-09: es idempotente: repetir el mismo bloqueo o pago no duplica', async () => {
       const user = await createUser();
       await claimDailyGrantIfDue(user._id, DAY_1);
       const matchId = new mongoose.Types.ObjectId();
@@ -144,7 +144,7 @@ describe.skipIf(!hasTestDb)('walletService (integración)', () => {
       await expectBalanceMatchesLedger(user._id);
     });
 
-    it('rechaza montos no enteros o no positivos', async () => {
+    it('R-ECO-09: rechaza montos no enteros o no positivos', async () => {
       const user = await createUser();
       const matchId = new mongoose.Types.ObjectId();
       await expect(lockBet(matchId, user._id, 10.5)).rejects.toMatchObject({ code: 'INVALID_AMOUNT' });
@@ -154,7 +154,7 @@ describe.skipIf(!hasTestDb)('walletService (integración)', () => {
   });
 
   describe('adminAdjust', () => {
-    it('ajusta con asiento ADMIN_ADJUST y no deja saldo negativo', async () => {
+    it('R-ECO-09: ajusta con asiento ADMIN_ADJUST y no deja saldo negativo', async () => {
       const user = await createUser();
       const admin = await createUser();
       await adminAdjust({ userId: user._id, amount: 250, adminId: admin._id, reason: 'compensación', operationId: 'op-1' });

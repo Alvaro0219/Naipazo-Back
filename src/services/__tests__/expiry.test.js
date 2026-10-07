@@ -59,7 +59,7 @@ describe.skipIf(!hasTestDb)('vencimientos de salas y torneos (integración)', ()
     expect((await Room.findById(room.id).lean()).status).toBe('playing');
   });
 
-  it('un torneo sin completar vence y devuelve todas las inscripciones', async () => {
+  it('R-ECO-07: un torneo sin completar vence y devuelve todas las inscripciones', async () => {
     const players = [await createUser({ chips: true }), await createUser({ chips: true }), await createUser({ chips: true })];
     const before = await Promise.all(players.map((p) => balanceOf(p.id)));
     const t = await tournamentService.createTournament(players[0], { uuid: randomUUID(), size: 4, buyIn: 300, targetPoints: 15 });

@@ -1,3 +1,5 @@
+import { trucoRank } from './cards.js';
+
 /**
  * Último punto de las malas en partidas a 30 (*Decisión del dueño*): con 15 se sigue en malas;
  * las buenas empiezan en 16.
@@ -46,4 +48,17 @@ export function decideHandWinner(results, manoTeam) {
 
   if (third !== null) return third;
   return first ?? manoTeam;
+}
+
+/**
+ * Ganador de una baza (R-BAZA-01..03). `plays` va en el orden en que se jugaron: [{ playerId, cardId, team }].
+ * Gana la carta más alta; empate entre equipos distintos = parda (winnerTeam null); empate entre compañeros = gana
+ * su equipo y la baza la "ganó" quien jugó primero de ellos (abre la siguiente).
+ */
+export function bazaWinner(plays) {
+  const ranked = plays.map((p) => ({ ...p, rank: trucoRank(p.cardId) }));
+  const top = Math.max(...ranked.map((r) => r.rank));
+  const best = ranked.filter((r) => r.rank === top);
+  const winnerTeam = new Set(best.map((b) => b.team)).size === 1 ? best[0].team : null;
+  return { winnerTeam, winnerPlayerId: winnerTeam === null ? null : best[0].playerId };
 }

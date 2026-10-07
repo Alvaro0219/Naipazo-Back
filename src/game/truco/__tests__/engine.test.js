@@ -19,7 +19,7 @@ describe('creación de partida', () => {
       .toThrow(expect.objectContaining({ code: 'FLOR_NOT_SUPPORTED' }));
   });
 
-  it('reparte de a una empezando por el mano y no deja jugar antes del reparto', () => {
+  it('R-REP-01: reparte de a una empezando por el mano y no deja jugar antes del reparto', () => {
     const initial = createMatchState({ config: { targetPoints: 15 }, playerIds: [A, B], dealerSeat: 1 });
     expect(() => applyAction(initial, A, { type: 'GO_TO_DECK' })).toThrow(expect.objectContaining({ code: 'HAND_OVER' }));
     const { state, events } = dealNextHand(initial, makeDeck(['1-espada', '2-oro', '3-oro'], WEAK_B));
@@ -35,7 +35,7 @@ describe('creación de partida', () => {
 });
 
 describe('bazas', () => {
-  it('gana la carta más alta, quien gana una baza juega primero la siguiente', () => {
+  it('R-BAZA-01 / R-TURNO-02: gana la carta más alta, quien gana una baza juega primero la siguiente', () => {
     const state = startMatch({ mano: ['1-espada', '4-oro', '5-copa'], pie: ['3-oro', '4-copa', '6-basto'] });
     const r = run(state, [
       [A, 'PLAY_CARD', '1-espada'], [B, 'PLAY_CARD', '4-copa'], // gana A
@@ -48,7 +48,7 @@ describe('bazas', () => {
     expect(end.events).toContainEqual(expect.objectContaining({ type: 'HAND_WON', winnerTeam: 1, points: 1 }));
   });
 
-  it('gana la mano quien gana las dos primeras, sin jugar la tercera', () => {
+  it('R-MANO-02: gana la mano quien gana las dos primeras, sin jugar la tercera', () => {
     const state = startMatch({ mano: ['1-espada', '1-basto', '4-oro'], pie: WEAK_B });
     const r = run(state, [
       [A, 'PLAY_CARD', '1-espada'], [B, 'PLAY_CARD', '4-copa'],
@@ -87,7 +87,7 @@ describe('bazas', () => {
     expect(r.state.score).toEqual([1, 0]);
   });
 
-  it('tres pardas: gana el mano, y con parda abre el mano', () => {
+  it('R-MANO-01 / R-TURNO-02: tres pardas: gana el mano, y con parda abre el mano', () => {
     const state = startMatch({ mano: ['3-oro', '2-oro', '12-oro'], pie: ['3-copa', '2-copa', '12-copa'] });
     const first = run(state, [[A, 'PLAY_CARD', '3-oro'], [B, 'PLAY_CARD', '3-copa']]);
     expect(first.state.hand.turnSeat).toBe(0);
@@ -98,7 +98,7 @@ describe('bazas', () => {
     expect(r.state.score).toEqual([1, 0]);
   });
 
-  it('el repartidor rota y el mano cambia en cada mano', () => {
+  it('R-REP-02: el repartidor rota y el mano cambia en cada mano', () => {
     const state = startMatch({ mano: ['1-espada', '1-basto', '4-oro'], pie: WEAK_B });
     const r = run(state, [[A, 'GO_TO_DECK']]);
     const next = dealNextHand(r.state, makeDeck(WEAK_B, ['1-espada', '1-basto', '4-oro']));
@@ -127,7 +127,7 @@ describe('truco', () => {
     expect(r.state.score).toEqual([2, 0]);
   });
 
-  it('solo sube quien tiene el quiero, y subir implica querer', () => {
+  it('R-TRUCO-02 / R-TRUCO-03: solo sube quien tiene el quiero, y subir implica querer', () => {
     let { state } = run(startMatch({ mano: STRONG_A, pie: WEAK_B }), [[A, 'CALL_TRUCO'], [B, 'ACCEPT']]);
     expect(state.hand.truco).toEqual({ level: 2, holderTeam: 1 });
     expect(() => applyAction(state, A, { type: 'CALL_RETRUCO' }))
@@ -148,7 +148,7 @@ describe('truco', () => {
     expect(r.state.score).toEqual([0, 2]);
   });
 
-  it('después del vale cuatro no se puede seguir subiendo', () => {
+  it('R-TRUCO-01: después del vale cuatro no se puede seguir subiendo', () => {
     const { state } = run(startMatch({ mano: STRONG_A, pie: WEAK_B }), [
       [A, 'CALL_TRUCO'], [B, 'CALL_RETRUCO'], [A, 'CALL_VALE_CUATRO'], [B, 'ACCEPT']
     ]);
@@ -160,7 +160,7 @@ describe('truco', () => {
 describe('envido', () => {
   const A33 = ['7-espada', '6-espada', '4-oro'];
 
-  it('querido y gana el mano: el pie dice "son buenas" y sus tantos no se revelan', () => {
+  it('R-ENV-05: querido y gana el mano: el pie dice "son buenas" y sus tantos no se revelan', () => {
     const r = run(startMatch({ mano: A33, pie: ['5-copa', '4-copa', '1-oro'] }), [[A, 'CALL_ENVIDO'], [B, 'ACCEPT']]);
     expect(r.state.score).toEqual([2, 0]);
     const result = r.events.find((e) => e.type === 'ENVIDO_RESULT');
@@ -178,7 +178,7 @@ describe('envido', () => {
     expect(Object.keys(result.tantos)).toEqual([A, B]); // en orden: primero el mano
   });
 
-  it('empate de tantos: gana el mano y el pie no los revela', () => {
+  it('R-ENV-05: empate de tantos: gana el mano y el pie no los revela', () => {
     const r = run(startMatch({ mano: A33, pie: ['7-copa', '6-copa', '4-basto'] }), [[A, 'CALL_ENVIDO'], [B, 'ACCEPT']]);
     expect(r.state.score).toEqual([2, 0]);
     expect(r.state.hand.envido.result.tantos).toEqual({ A: 33 });
@@ -191,7 +191,7 @@ describe('envido', () => {
     expect(r.state.score).toEqual([4, 0]);
   });
 
-  it('el pie puede cantar después de que el mano jugó su carta', () => {
+  it('R-ENV-03: el pie puede cantar después de que el mano jugó su carta', () => {
     const r = run(startMatch({ mano: A33, pie: WEAK_B }), [
       [A, 'PLAY_CARD', '4-oro'], [B, 'CALL_REAL_ENVIDO'], [A, 'REJECT']
     ]);
@@ -199,7 +199,7 @@ describe('envido', () => {
     expect(r.state.hand.turnSeat).toBe(1); // vuelve a B para jugar su carta
   });
 
-  it('no se puede cantar en la segunda baza ni dos veces en la mano', () => {
+  it('R-ENV-03: no se puede cantar en la segunda baza ni dos veces en la mano', () => {
     const played = run(startMatch({ mano: A33, pie: WEAK_B }), [
       [A, 'PLAY_CARD', '7-espada'], [B, 'PLAY_CARD', '4-copa']
     ]).state;
@@ -210,12 +210,12 @@ describe('envido', () => {
     expect(getAvailableActions(sung, A)).not.toContain('CALL_ENVIDO');
   });
 
-  it('no se puede cantar una vez querido el truco', () => {
+  it('R-ENV-03: no se puede cantar una vez querido el truco', () => {
     const { state } = run(startMatch({ mano: A33, pie: WEAK_B }), [[A, 'CALL_TRUCO'], [B, 'ACCEPT']]);
     expect(getAvailableActions(state, A)).not.toContain('CALL_ENVIDO');
   });
 
-  it('el envido está primero: se resuelve y vuelve el truco pendiente', () => {
+  it('R-ENV-08: el envido está primero: se resuelve y vuelve el truco pendiente', () => {
     let { state } = run(startMatch({ mano: A33, pie: WEAK_B }), [[A, 'CALL_TRUCO'], [B, 'CALL_ENVIDO']]);
     expect(state.hand.pending).toMatchObject({ kind: 'envido', callerTeam: 1 });
     ({ state } = run(state, [[A, 'ACCEPT']]));
@@ -226,7 +226,7 @@ describe('envido', () => {
     expect(state.hand.truco.level).toBe(2);
   });
 
-  it('el envido está primero no aplica al retruco', () => {
+  it('R-ENV-08: el envido está primero no aplica al retruco', () => {
     const { state } = run(startMatch({ mano: A33, pie: WEAK_B }), [[A, 'CALL_TRUCO'], [B, 'CALL_RETRUCO']]);
     expect(getAvailableActions(state, A)).not.toContain('CALL_ENVIDO');
   });
@@ -236,7 +236,7 @@ describe('falta envido y fin de partida a mitad de mano', () => {
   const WEAK_A = ['4-oro', '5-copa', '12-basto'];
   const B33 = ['7-espada', '6-espada', '1-oro'];
 
-  it('a 15: la falta le da al ganador lo que le falta al líder y la partida termina', () => {
+  it('R-ENV-07 / R-FIN-01 / R-FIN-03: a 15: la falta le da al ganador lo que le falta al líder y la partida termina', () => {
     const r = run(startMatch({ mano: WEAK_A, pie: B33, score: [12, 13] }), [[A, 'CALL_FALTA_ENVIDO'], [B, 'ACCEPT']]);
     expect(r.state.score).toEqual([12, 15]);
     expect(r.state.phase).toBe(PHASES.FINISHED);
@@ -262,7 +262,7 @@ describe('falta envido y fin de partida a mitad de mano', () => {
     expect(r.state.phase).toBe(PHASES.PLAYING);
   });
 
-  it('un envido no querido también puede cerrar la partida', () => {
+  it('R-FIN-01: un envido no querido también puede cerrar la partida', () => {
     const r = run(startMatch({ mano: WEAK_A, pie: B33, score: [14, 0] }), [[A, 'CALL_ENVIDO'], [B, 'REJECT']]);
     expect(r.state.phase).toBe(PHASES.FINISHED);
     expect(r.state.winnerTeam).toBe(0);
@@ -278,7 +278,7 @@ describe('ir al mazo', () => {
     expect(r.state.hand.result).toMatchObject({ reason: 'deck', points: 2 });
   });
 
-  it('respondiendo un truco en la primera baza: 1 + 1', () => {
+  it('R-MAZO-IR-02: respondiendo un truco en la primera baza: 1 + 1', () => {
     const r = run(startMatch({ mano: HAND_A, pie: WEAK_B }), [[A, 'CALL_TRUCO'], [B, 'GO_TO_DECK']]);
     expect(r.state.score).toEqual([2, 0]);
   });
@@ -290,7 +290,7 @@ describe('ir al mazo', () => {
     expect(r.state.score).toEqual([1, 1]);
   });
 
-  it('con un envido pendiente equivale a no quererlo', () => {
+  it('R-MAZO-IR-02: con un envido pendiente equivale a no quererlo', () => {
     const r = run(startMatch({ mano: HAND_A, pie: WEAK_B }), [[A, 'CALL_ENVIDO'], [B, 'GO_TO_DECK']]);
     expect(r.state.score).toEqual([2, 0]); // 1 del envido no querido + 1 de la mano
   });
@@ -320,7 +320,7 @@ describe('acciones ilegales', () => {
     expect(() => applyAction(state, playerId, action)).toThrow(expect.objectContaining({ code }));
   });
 
-  it('quien cantó no puede jugar ni responder su propio canto', () => {
+  it('R-TURNO-03: quien cantó no puede jugar ni responder su propio canto', () => {
     const { state: s } = run(state, [[A, 'CALL_TRUCO']]);
     expect(() => applyAction(s, A, { type: 'PLAY_CARD', payload: { cardId: '1-espada' } }))
       .toThrow(expect.objectContaining({ code: 'NOT_YOUR_TURN' }));
@@ -328,7 +328,7 @@ describe('acciones ilegales', () => {
     expect(getAvailableActions(s, A)).toEqual([]);
   });
 
-  it('una acción, válida o no, nunca modifica el estado recibido', () => {
+  it('R-TURNO-01: una acción, válida o no, nunca modifica el estado recibido', () => {
     const snapshot = structuredClone(state);
     applyAction(state, A, { type: 'PLAY_CARD', payload: { cardId: '1-espada' } });
     expect(() => applyAction(state, B, { type: 'ACCEPT' })).toThrow();
@@ -339,7 +339,7 @@ describe('acciones ilegales', () => {
 describe('tiempo y abandono', () => {
   const state = startMatch({ mano: ['1-espada', '4-oro', '5-oro'], pie: WEAK_B });
 
-  it('vence el tiempo con un canto pendiente: no quiero', () => {
+  it('R-TIEMPO-02: vence el tiempo con un canto pendiente: no quiero', () => {
     const { state: s } = run(state, [[A, 'CALL_TRUCO']]);
     const r = applyTimeout(s);
     expect(r.playerId).toBe(B);
@@ -347,13 +347,13 @@ describe('tiempo y abandono', () => {
     expect(r.events[0]).toMatchObject({ type: 'TURN_TIMEOUT', playerId: B });
   });
 
-  it('vence el tiempo para jugar: pierde la mano (sin el punto del envido)', () => {
+  it('R-TIEMPO-01: vence el tiempo para jugar: pierde la mano (sin el punto del envido)', () => {
     const r = applyTimeout(state);
     expect(r.state.score).toEqual([0, 1]);
     expect(r.state.hand.result).toMatchObject({ reason: 'timeout' });
   });
 
-  it('abandono: gana el otro equipo sin tocar el marcador', () => {
+  it('R-ABAND-03: abandono: gana el otro equipo sin tocar el marcador', () => {
     const r = forfeitMatch(state, 0);
     expect(r.state.phase).toBe(PHASES.FINISHED);
     expect(r.state.winnerTeam).toBe(1);

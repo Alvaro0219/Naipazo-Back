@@ -1,5 +1,6 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import mongoose from 'mongoose';
+import { RULES_VERSION } from '../game/truco/index.js';
 import { Match } from '../models/Match.js';
 import { ACTIVE_ROOM_STATUSES, Room } from '../models/Room.js';
 import { Tournament } from '../models/Tournament.js';
@@ -331,6 +332,7 @@ async function createMatchForRoom(room, session, { onInsufficient, tournamentId 
       userId: x.userId, username: x.username, seat: x.seat, team: x.seat % 2, betLocked: bet
     })),
     status: 'playing',
+    rulesVersion: RULES_VERSION,
     betsSettled: !(bet > 0),
     tournamentId,
     round,

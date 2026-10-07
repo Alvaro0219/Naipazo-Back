@@ -12,7 +12,9 @@
     "start": "NODE_ENV=production node src/app.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "make-admin": "node scripts/makeAdmin.js"
+    "make-admin": "node scripts/makeAdmin.js",
+    "rules:trace": "node scripts/check-rule-ids.mjs",
+    "rules:matrix": "node scripts/render-matrix.mjs"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -29,6 +31,7 @@
     "uuid": "^11.1.1"
   },
   "devDependencies": {
+    "fast-check": "^4.10.2",
     "vitest": "^3.2.4"
   }
 }

@@ -16,7 +16,7 @@ function hiddenCardsFor(state, playerId) {
 }
 
 describe('projectStateFor', () => {
-  it('muestra mis cartas y no las del rival ni el mazo', () => {
+  it('R-VIS-01 / R-MAZO-03: muestra mis cartas y no las del rival ni el mazo', () => {
     const state = startMatch({ mano: MANO, pie: PIE });
     const view = projectStateFor(state, A);
     const json = JSON.stringify(view);
@@ -33,7 +33,7 @@ describe('projectStateFor', () => {
     expect(projectStateFor(state, B).hand.bazas[0].plays).toEqual([{ playerId: A, cardId: '4-oro' }]);
   });
 
-  it('no da ayudas de tantos: ni los propios se calculan para el jugador', () => {
+  it('R-ENV-10: no da ayudas de tantos: ni los propios se calculan para el jugador', () => {
     const state = startMatch({ mano: MANO, pie: PIE });
     for (const id of [A, B]) {
       const view = projectStateFor(state, id);
@@ -42,7 +42,7 @@ describe('projectStateFor', () => {
     }
   });
 
-  it('si gana el mano, el rival nunca ve los tantos del pie', () => {
+  it('R-VIS-02: si gana el mano, el rival nunca ve los tantos del pie', () => {
     const { state } = run(startMatch({ mano: MANO, pie: PIE }), [[A, 'CALL_ENVIDO'], [B, 'ACCEPT']]);
     const viewA = projectStateFor(state, A);
     expect(viewA.hand.envido.result.tantos).toEqual({ A: 33 });

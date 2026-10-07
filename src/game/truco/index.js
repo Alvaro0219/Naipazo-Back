@@ -6,3 +6,4 @@ export {
   getActingPlayerIds, getAvailableActions
 } from './engine.js';
 export { projectStateFor } from './views.js';
+export { RULES_VERSION } from './rules.js';

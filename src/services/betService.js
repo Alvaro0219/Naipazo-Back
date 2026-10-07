@@ -1,5 +1,6 @@
 import { env } from '../config/env.js';
 import { Match } from '../models/Match.js';
+import { houseFee } from '../utils/houseFee.js';
 import * as emitter from '../sockets/emitter.js';
 import { getBalance, payoutBet, refundBet } from './walletService.js';
 
@@ -11,7 +12,7 @@ import { getBalance, payoutBet, refundBet } from './walletService.js';
 export function computePayouts({ players, winnerTeam }, houseRate = env.houseRate) {
   const pot = players.reduce((sum, p) => sum + (p.betLocked || 0), 0);
   if (pot === 0 || winnerTeam === null || winnerTeam === undefined) return [];
-  const net = pot - Math.floor(pot * houseRate);
+  const net = pot - houseFee(pot, houseRate);
   const winners = players.filter((p) => p.team === winnerTeam);
   const share = Math.floor(net / winners.length);
   return winners.map((w) => ({ userId: String(w.userId), amount: share }));
@@ -23,7 +24,12 @@ export function computePayouts({ players, winnerTeam }, houseRate = env.houseRat
  * como en una partida normal. Hoy no hay devoluciones en partidas terminadas (`refunds` queda para el futuro).
  */
 export function computeSettlement(match, houseRate = env.houseRate) {
-  return { payouts: computePayouts(match, houseRate), refunds: [] };
+  const payouts = computePayouts(match, houseRate);
+  const refunds = [];
+  const pot = match.players.reduce((sum, p) => sum + (p.betLocked || 0), 0);
+  const paid = [...payouts, ...refunds].reduce((sum, p) => sum + p.amount, 0);
+  // D-10: la comisión y el resto de dividir entre ganadores quedan en la casa (lo bloqueado = pagado + devuelto + casa)
+  return { payouts, refunds, houseCut: pot - paid };
 }
 
 /** Resumen de fichas por jugador para el cliente: { bet, pot, players: [{ userId, bet, received, net }] }. */
@@ -79,7 +85,8 @@ export async function settleMatchBets(matchId) {
     return null; // sigue en juego
   }
 
-  await Match.updateOne({ _id: match._id, betsSettled: false }, { betsSettled: true });
+  const houseCut = match.status === 'finished' ? computeSettlement(match).houseCut : 0;
+  await Match.updateOne({ _id: match._id, betsSettled: false }, { betsSettled: true, houseCut });
   await notifyBalances(match.players.map((p) => p.userId));
   return buildChipsSummary(match);
 }

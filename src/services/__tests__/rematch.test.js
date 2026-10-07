@@ -43,7 +43,7 @@ describe.skipIf(!hasTestDb)('revancha (integración)', () => {
     return table;
   }
 
-  it('si aceptan los dos arranca una sala nueva con la misma apuesta bloqueada otra vez', async () => {
+  it('R-ECO-08: si aceptan los dos arranca una sala nueva con la misma apuesta bloqueada otra vez', async () => {
     const { host, guest, room, matchId } = await finishedTable({ bet: 100 });
     expect(matchService.getRuntime(matchId).finished).toBe(true);
 
@@ -72,7 +72,7 @@ describe.skipIf(!hasTestDb)('revancha (integración)', () => {
     await expect(rematchService.requestRematch(host.id, matchId)).rejects.toMatchObject({ code: 'REMATCH_UNAVAILABLE' });
   }, 30000);
 
-  it('si a alguno no le alcanza el saldo, no arranca ni bloquea nada', async () => {
+  it('R-ECO-08: si a alguno no le alcanza el saldo, no arranca ni bloquea nada', async () => {
     const { host, guest, matchId } = await finishedTable({ bet: 600 });
     const before = [await balanceOf(host.id), await balanceOf(guest.id)];
     expect(Math.min(...before)).toBeLessThan(600); // el que perdió quedó con 400

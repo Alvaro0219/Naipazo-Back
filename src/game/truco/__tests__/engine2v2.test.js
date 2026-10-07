@@ -31,7 +31,7 @@ const LOW = [
 ];
 
 describe('2 vs 2: reparto, turnos y bazas', () => {
-  it('reparte 12 cartas distintas de a una desde el mano y rota quien reparte', () => {
+  it('R-REP-01 / R-REP-02: reparte 12 cartas distintas de a una desde el mano y rota quien reparte', () => {
     const initial = createMatchState({ config: { targetPoints: 15 }, playerIds: PLAYERS, dealerSeat: 3 });
     const { state, events } = dealNextHand(initial, makeDeck4(LOW));
     expect(PLAYERS.map((p) => state.hand.cards[p])).toEqual(LOW);
@@ -76,7 +76,7 @@ describe('2 vs 2: reparto, turnos y bazas', () => {
     expect(r.state.hand.turnSeat).toBe(0);
   });
 
-  it('empate entre compañeros no es parda: gana su equipo y abre quien la jugó primero', () => {
+  it('R-BAZA-03: empate entre compañeros no es parda: gana su equipo y abre quien la jugó primero', () => {
     const state = start4([
       ['3-oro', '5-oro', '6-basto'],
       ['4-espada', '5-copa', '6-oro'],
@@ -105,7 +105,7 @@ describe('2 vs 2: reparto, turnos y bazas', () => {
 });
 
 describe('2 vs 2: quién responde un canto (el rival más mano)', () => {
-  it('canta A2 y responde B1 (juega antes que B2); B2 no puede responder', () => {
+  it('R-TRUCO-04 / R-TURNO-01: canta A2 y responde B1 (juega antes que B2); B2 no puede responder', () => {
     const state = start4(LOW);
     const r = run(state, [[A1, 'PLAY_CARD', '4-copa'], [B1, 'PLAY_CARD', '4-espada'], [A2, 'CALL_TRUCO']]);
     expect(r.state.hand.pending.responderSeat).toBe(1);
@@ -116,7 +116,7 @@ describe('2 vs 2: quién responde un canto (el rival más mano)', () => {
     expect(projectStateFor(r.state, B2).hand.pending.responderId).toBe(B1);
   });
 
-  it('canta B1 y responde A1 (el mano), aunque ya haya jugado su carta', () => {
+  it('R-TRUCO-04: canta B1 y responde A1 (el mano), aunque ya haya jugado su carta', () => {
     const state = start4(LOW);
     const r = run(state, [[A1, 'PLAY_CARD', '4-copa'], [B1, 'CALL_TRUCO']]);
     expect(getActingPlayerIds(r.state)).toEqual([A1]);
@@ -157,7 +157,7 @@ describe('2 vs 2: envido (solo los pies)', () => {
     ['6-basto', '4-basto', '11-oro']
   ];
 
-  it('el mano y su rival siguiente no pueden cantar envido; los pies sí, en su turno', () => {
+  it('R-ENV-03: el mano y su rival siguiente no pueden cantar envido; los pies sí, en su turno', () => {
     const state = start4(TANTOS_HANDS);
     expect(getAvailableActions(state, A1)).not.toContain('CALL_ENVIDO');
     const r1 = run(state, [[A1, 'PLAY_CARD', '4-copa']]);
@@ -168,7 +168,7 @@ describe('2 vs 2: envido (solo los pies)', () => {
     expect(getAvailableActions(r3.state, B2)).toContain('CALL_ENVIDO');
   });
 
-  it('lo responde el rival más mano, que puede subirlo', () => {
+  it('R-ENV-09: lo responde el rival más mano, que puede subirlo', () => {
     const state = start4(TANTOS_HANDS);
     const r = run(state, [[A1, 'PLAY_CARD', '4-copa'], [B1, 'PLAY_CARD', '4-espada'], [A2, 'CALL_ENVIDO']]);
     expect(getActingPlayerIds(r.state)).toEqual([B1]);
@@ -176,7 +176,7 @@ describe('2 vs 2: envido (solo los pies)', () => {
     expect(getAvailableActions(r.state, B2)).toEqual([]);
   });
 
-  it('canto de tantos desde el mano: canta quien supera estrictamente; los demás "son buenas" o pasan', () => {
+  it('R-ENV-06: canto de tantos desde el mano: canta quien supera estrictamente; los demás "son buenas" o pasan', () => {
     const state = start4(TANTOS_HANDS);
     const r = run(state, [[A1, 'PLAY_CARD', '4-copa'], [B1, 'PLAY_CARD', '4-espada'], [A2, 'CALL_ENVIDO'], [B1, 'ACCEPT']]);
     const result = r.events.find((e) => e.type === 'ENVIDO_RESULT');
@@ -185,7 +185,7 @@ describe('2 vs 2: envido (solo los pies)', () => {
     expect(result.tantos).not.toHaveProperty(B2);
   });
 
-  it('si su equipo ya va ganando, el compañero pasa y sus tantos no se revelan (ni a su compañero)', () => {
+  it('R-ENV-06 / R-VIS-02: si su equipo ya va ganando, el compañero pasa y sus tantos no se revelan (ni a su compañero)', () => {
     const hands = [
       ['7-espada', '6-espada', '10-basto'], // A1 33
       ['4-espada', '5-copa', '6-oro'], // B1 6
@@ -202,7 +202,7 @@ describe('2 vs 2: envido (solo los pies)', () => {
     }
   });
 
-  it('"el envido está primero": quien responde el truco puede cantar envido aunque no sea pie', () => {
+  it('R-ENV-08: "el envido está primero": quien responde el truco puede cantar envido aunque no sea pie', () => {
     const state = start4(TANTOS_HANDS);
     const r = run(state, [[A1, 'CALL_TRUCO']]);
     expect(getActingPlayerIds(r.state)).toEqual([B1]);
@@ -217,7 +217,7 @@ describe('2 vs 2: envido (solo los pies)', () => {
 });
 
 describe('2 vs 2: mazo y tiempo', () => {
-  it('el mazo es del equipo: si se va A2, la mano es de B (con el punto del envido en primera)', () => {
+  it('R-MAZO-IR-03: el mazo es del equipo: si se va A2, la mano es de B (con el punto del envido en primera)', () => {
     const state = start4(LOW);
     const r = run(state, [[A1, 'PLAY_CARD', '4-copa'], [B1, 'PLAY_CARD', '4-espada'], [A2, 'GO_TO_DECK']]);
     expect(r.state.hand.result).toMatchObject({ winnerTeam: 1, points: 2, reason: 'deck' });
@@ -248,7 +248,7 @@ describe('2 vs 2: mazo y tiempo', () => {
 });
 
 describe('2 vs 2: proyección', () => {
-  it('cada jugador ve solo sus cartas; de los otros tres (también del compañero), solo cuántas tiene', () => {
+  it('R-VIS-01: cada jugador ve solo sus cartas; de los otros tres (también del compañero), solo cuántas tiene', () => {
     const state = start4(LOW);
     for (const [seat, p] of PLAYERS.entries()) {
       const view = projectStateFor(state, p);

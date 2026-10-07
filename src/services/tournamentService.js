@@ -1,6 +1,7 @@
 import { randomInt } from 'node:crypto';
 import mongoose from 'mongoose';
 import { env } from '../config/env.js';
+import { houseFee } from '../utils/houseFee.js';
 import { Room } from '../models/Room.js';
 import { Tournament } from '../models/Tournament.js';
 import { User } from '../models/User.js';
@@ -43,7 +44,7 @@ function later(fn, ms) {
 }
 
 function computePrize(pot, houseRate = env.houseRate) {
-  return pot - Math.floor(pot * houseRate);
+  return pot - houseFee(pot, houseRate);
 }
 
 export function toPublicTournament(t) {

@@ -7,7 +7,7 @@ import { createDeck, shuffleDeck } from '../deck.js';
 import { seededRng } from './helpers.js';
 
 describe('cartas', () => {
-  it('el mazo tiene 40 cartas únicas, sin 8 ni 9', () => {
+  it('R-MAZO-01: el mazo tiene 40 cartas únicas, sin 8 ni 9', () => {
     expect(ALL_CARD_IDS).toHaveLength(40);
     expect(new Set(ALL_CARD_IDS).size).toBe(40);
     expect(ALL_CARD_IDS.some((c) => /^(8|9)-/.test(c))).toBe(false);
@@ -18,7 +18,7 @@ describe('cartas', () => {
     expect(() => parseCard('1-corazon')).toThrow();
   });
 
-  it('respeta la jerarquía completa del truco', () => {
+  it('R-CARTA-01: respeta la jerarquía completa del truco', () => {
     const order = [
       ['1-espada'], ['1-basto'], ['7-espada'], ['7-oro'],
       ['3-espada', '3-basto', '3-oro', '3-copa'],
@@ -49,7 +49,7 @@ describe('cartas', () => {
 });
 
 describe('mazo', () => {
-  it('barajar devuelve una permutación sin modificar el original', () => {
+  it('R-MAZO-02: barajar devuelve una permutación sin modificar el original', () => {
     const deck = createDeck();
     const shuffled = shuffleDeck(deck);
     expect(deck).toEqual(ALL_CARD_IDS);
@@ -61,7 +61,7 @@ describe('mazo', () => {
     expect(shuffleDeck(createDeck(), seededRng(7))).not.toEqual(shuffleDeck(createDeck(), seededRng(8)));
   });
 
-  it('el motor nunca usa Math.random', () => {
+  it('R-MAZO-02: el motor nunca usa Math.random', () => {
     const dir = join(dirname(fileURLToPath(import.meta.url)), '..');
     for (const file of readdirSync(dir).filter((f) => f.endsWith('.js'))) {
       const code = readFileSync(join(dir, file), 'utf8')

@@ -1,9 +1,9 @@
-import { isValidCardId, trucoRank } from './cards.js';
+import { isValidCardId } from './cards.js';
 import { RuleError } from './errors.js';
 import {
   canRaiseEnvido, computeTantos, envidoAcceptedPoints, envidoRejectedPoints
 } from './envido.js';
-import { decideHandWinner, faltaEnvidoPoints } from './scoring.js';
+import { bazaWinner, decideHandWinner, faltaEnvidoPoints } from './scoring.js';
 import { PHASES } from './state.js';
 
 // Motor puro: applyAction(state, playerId, action) -> { state, events } | throws RuleError.
@@ -154,17 +154,8 @@ function endHand(state, events, winnerTeam, points, reason) {
 function resolveBaza(state, events) {
   const { hand } = state;
   const baza = currentBaza(hand);
-  const ranked = baza.plays.map((p) => ({
-    ...p,
-    rank: trucoRank(p.cardId),
-    team: findPlayer(state, p.playerId).team
-  }));
-  const top = Math.max(...ranked.map((r) => r.rank));
-  const best = ranked.filter((r) => r.rank === top);
-  const winnerTeam = new Set(best.map((b) => b.team)).size === 1 ? best[0].team : null;
+  const { winnerTeam, winnerPlayerId } = bazaWinner(baza.plays.map((p) => ({ ...p, team: findPlayer(state, p.playerId).team })));
   baza.winnerTeam = winnerTeam;
-
-  const winnerPlayerId = winnerTeam === null ? null : best[0].playerId;
   events.push({ type: 'BAZA_WON', bazaIndex: hand.bazas.length - 1, winnerTeam, winnerPlayerId });
 
   const handWinner = decideHandWinner(hand.bazas.map((b) => b.winnerTeam), manoTeamOf(state));

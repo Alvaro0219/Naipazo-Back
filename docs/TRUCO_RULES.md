@@ -1,135 +1,214 @@
-# Reglas de truco implementadas
+# Reglas de truco de Naipazo
 
-Variante del motor `src/game/truco/` (Fase 1). Cada regla tiene su test en `src/game/truco/__tests__/`;
-la columna **Test** indica la suite. Las decisiones marcadas como **[elegida]** son variantes regionales
-que confirmó el dueño del producto; las marcadas como **[estándar]** siguen la regla más difundida y no
-cambiaron por consulta.
+**Fuente única de las reglas** del motor (`src/game/truco/`). Cada regla tiene un identificador `R-…`; **cada test que
+la verifica lleva el identificador en su nombre** y `npm run rules:trace` falla si algún identificador de este
+documento no tiene al menos un test (trazabilidad, ver `EXACTITUD_DEL_JUEGO.md`).
 
-## Alcance
+- **Versión de reglas: 1** (`RULES_VERSION` en `src/game/truco/rules.js`). Cada partida la guarda en
+  `Match.rulesVersion`; si una regla cambia a propósito, se sube la versión y se documenta acá.
+- **[elegida]**: variante regional confirmada por el dueño. **[estándar]**: la regla más difundida.
+- Sin flor **[elegida]**: `createMatchState` rechaza `withFlor: true` (`FLOR_NOT_SUPPORTED`). Con tres cartas del mismo
+  palo se canta envido normal. Partidas a 15 o 30 puntos. Modos 1 vs 1 y 2 vs 2.
 
-- 1 vs 1 y **2 vs 2** (M8). El motor trabaja con **equipos** (asientos alternados 0/1/0/1); las reglas propias
-  del 2 vs 2 están al final de este documento.
-- **Sin flor [elegida]**: por ahora no se implementa. `createMatchState` rechaza `withFlor: true`
-  (`FLOR_NOT_SUPPORTED`) y las acciones `CALL_FLOR`/`CALL_CONTRAFLOR*` responden `UNKNOWN_ACTION`.
-  Con tres cartas del mismo palo se canta envido normal (20 + las dos más altas).
-- Partidas a 15 o 30 puntos.
+## Decisiones cerradas por el dueño
 
-## Cartas y reparto
+| # | Tema | Decisión |
+|---|---|---|
+| D-1 | Frontera malas/buenas (a 30) | Malas 0–15, buenas 16–30: **con 15 justos se sigue en malas**. |
+| D-2 | Tiempo de turno | **20 s** por decisión (`TURN_TIMEOUT_SECONDS`). Sin banco de tiempo. |
+| D-3 | Turno vencido al tener que jugar | **Pierde la mano**: el rival suma lo que valía la mano (1, o el truco querido), **sin** el punto extra del envido del mazo. |
+| D-4 | Quién abre tras una parda | **El mano** (1 vs 1 y 2 vs 2). |
+| D-5 | 2 vs 2 | Sentido 0→1→2→3 (antihorario en pantalla); el envido lo cantan **solo los pies**; el mazo es **de la pareja**; cada canto lo responde **un solo rival, el más mano**. |
+| D-6 | Combinaciones de envido | Las de la tabla de `R-ENV-02` y ninguna otra: envido hasta dos veces, real envido una sola vez y nunca seguido de envido, falta envido cierra la secuencia. |
+| D-7 | Momentos del envido | Solo en la primera baza y una vez por mano; en 1 vs 1 cada uno en su turno antes de tirar su carta; en 2 vs 2 solo los pies en su turno; "el envido está primero" ante un truco no querido (no ante retruco ni vale cuatro); **nunca** después de querido el truco. |
+| D-8 | Puntaje que supera el objetivo | Se **topea** al objetivo (no se guarda el real). |
+| D-9 | Abandono en 2 vs 2 | **Pierden los dos** de la pareja; cada rival cobra 2 apuestas. |
+| D-10 | Resto de una división con comisión | **Queda en la casa** (se registra como comisión). Nunca se crean ni se pierden fichas. |
 
-| Regla | Test |
-|---|---|
-| Baraja española de 40 cartas (sin 8, 9 ni comodines). | cards |
-| Jerarquía: 1♠ > 1 basto > 7♠ > 7 oro > 3 > 2 > 1 copa/oro > 12 > 11 > 10 > 7 copa/basto > 6 > 5 > 4. | cards |
-| Mezcla Fisher-Yates con `crypto.randomInt`; nunca `Math.random`. El mazo barajado queda en `hand.deck` para el `MatchHandLog`. | cards |
-| Se reparten 3 cartas de a una, empezando por el mano. El repartidor rota cada mano; el mano es el siguiente al repartidor. El primer repartidor lo sortea quien crea la partida. | engine |
+## Cartas y mazo
 
-## Bazas
+| Id | Regla | Tests |
+|---|---|---|
+| R-MAZO-01 | El mazo tiene 40 cartas distintas: espada, basto, oro y copa × 1–7, 10, 11, 12. Sin 8, 9 ni comodines. | cards, oracle |
+| R-MAZO-02 | Se baraja una vez por mano con Fisher-Yates y `crypto.randomInt` (nunca `Math.random`); cada mano usa un barajado nuevo. | cards, shuffle |
+| R-MAZO-03 | El orden del mazo y las cartas repartidas nunca salen del servidor. | views, properties |
+| R-CARTA-01 | Jerarquía para el truco, de mayor a menor: 1♠ > 1 basto > 7♠ > 7 oro > los 3 > los 2 > 1 copa y 1 oro > los 12 > los 11 > los 10 > 7 copa y 7 basto > los 6 > los 5 > los 4. | oracle |
+| R-CARTA-02 | Cartas de la misma posición empatan. | oracle |
 
-| Regla | Test |
-|---|---|
-| Gana la baza la carta más alta; con cartas de igual valor de equipos distintos es **parda**. | engine |
-| Gana la mano quien gane dos bazas (si gana las dos primeras no se juega la tercera). | engine, scoring |
-| Parda en la 1.ª: define la 2.ª. Parda en la 2.ª: gana quien ganó la 1.ª. | scoring |
-| Dos pardas: define la 3.ª. 1 a 1 y parda en la 3.ª: gana quien ganó la 1.ª **[estándar]**. | scoring |
-| Tres pardas: gana el mano. | engine, scoring |
-| Quien gana una baza abre la siguiente; con parda abre el mano. | engine |
+## Reparto y mano
 
-## Turnos y cantos
+| Id | Regla | Tests |
+|---|---|---|
+| R-REP-01 | Cada jugador recibe 3 cartas, de a una, empezando por el mano: 6 en 1 vs 1 y 12 en 2 vs 2, sin repetir. | rules |
+| R-REP-02 | Quien reparte rota cada mano; es **mano** el siguiente al que reparte en el sentido del juego. | rules |
+| R-REP-03 | En la primera mano, quien reparte se elige al azar con `crypto.randomInt` (`matchService`). | rules |
 
-- Solo actúa **el jugador del turno**, o, si hay un canto pendiente, **el rival que tiene que responder**.
-  Quien cantó no puede jugar ni hacer nada hasta que le respondan.
-- Los cantos se hacen en el propio turno, antes de tirar la carta. Después de la respuesta, el turno
-  vuelve a quien tenía que jugar.
+## Turnos y bazas
+
+| Id | Regla | Tests |
+|---|---|---|
+| R-TURNO-01 | En cada momento hay **exactamente un** jugador que puede actuar: el que debe jugar o el que debe responder un canto. Cualquier acción de otro se rechaza. | rules, properties |
+| R-TURNO-02 | La primera baza la abre el mano; las siguientes, quien jugó la carta ganadora de la anterior; tras una parda, el mano (D-4). | rules |
+| R-TURNO-03 | Con un canto pendiente nadie puede jugar cartas; quien cantó no puede hacer nada hasta que le respondan. Resuelto el canto, el turno vuelve a quien tenía que jugar. | rules, matrix |
+| R-BAZA-01 | Gana la baza la carta más alta según `R-CARTA-01`. | oracle |
+| R-BAZA-02 | Si las cartas más altas son de equipos distintos y empatan: **parda**. | oracle |
+| R-BAZA-03 | (2 vs 2) Si las más altas empatadas son de compañeros, gana su equipo (no es parda) y abre la siguiente quien la jugó primero. | oracle, rules |
+
+## Ganador de la mano
+
+| Id | Regla | Tests |
+|---|---|---|
+| R-MANO-01 | Gana quien gana dos bazas. Parda en la 1.ª: define la 2.ª (si es parda, la 3.ª). Parda en la 2.ª o en la 3.ª: gana quien ganó la 1.ª. Tres pardas: gana el equipo del mano. | oracle |
+| R-MANO-02 | La mano se resuelve **en cuanto el resultado queda determinado**: no se juegan bazas innecesarias. | oracle, rules |
+
+| Baza 1 | Baza 2 | Baza 3 | Gana |
+|---|---|---|---|
+| A | A | — | A |
+| A | B | A | A |
+| A | B | B | B |
+| A | B | P | A |
+| A | P | — | A |
+| P | A | — | A |
+| P | P | A | A |
+| P | P | P | equipo del mano |
 
 ## Truco
 
-| Regla | Test |
-|---|---|
-| Truco (2) → Retruco (3) → Vale cuatro (4). Se responde quiero, no quiero o subiendo al siguiente nivel. | engine |
-| No quiero: quien cantó suma el nivel anterior (1, 2 o 3) y la mano termina. | engine |
-| Subir implica querer el nivel anterior. | engine |
-| Solo puede subir quien tiene **el quiero**: el equipo que aceptó el último nivel. El truco inicial lo canta cualquiera en su turno. | engine |
-| La mano vale el nivel de truco querido (1 si no se cantó). | engine |
+| Canto | Querido, la mano vale | No querido, suma quien cantó |
+|---|---|---|
+| Sin canto | 1 | — |
+| Truco | 2 | 1 |
+| Retruco | 3 | 2 |
+| Vale cuatro | 4 | 3 |
+
+| Id | Regla | Tests |
+|---|---|---|
+| R-TRUCO-01 | Los niveles suben de a uno: truco → retruco → vale cuatro. | oracle, matrix |
+| R-TRUCO-02 | Solo sube el equipo que tiene "el quiero" (el que aceptó el último nivel). El truco inicial lo canta cualquiera. | rules, matrix |
+| R-TRUCO-03 | Se canta en el propio turno antes de tirar la carta, o subiendo al responder. Subir implica querer el nivel anterior. | rules, matrix |
+| R-TRUCO-04 | Lo responde **un solo rival, el más mano** de la baza en curso (en 1 vs 1, el único rival). Nadie más puede responder (D-5). | rules |
+| R-TRUCO-05 | "No quiero" termina la mano en el acto con los puntos de la tabla. Querido, la mano vale el nivel de la tabla. | oracle |
 
 ## Envido
 
-| Regla | Test |
-|---|---|
-| Tantos: con dos o más cartas del mismo palo, 20 + las dos más altas; si no, la carta más alta. Las figuras valen 0. | envido |
-| Solo durante la **primera baza**, una vez por mano. Cada jugador puede cantarlo en su turno antes de tirar su carta (el pie, después de que el mano jugó). | engine |
-| No se puede cantar una vez **querido** el truco **[estándar]**. | engine |
-| **El envido está primero**: si se canta truco en la primera baza, el que responde puede cantar envido; se resuelve el envido y después el truco vuelve a quedar pendiente con la misma respuesta. No aplica al retruco ni al vale cuatro. | engine |
-| Secuencias: envido hasta dos veces, real envido una vez (después no se vuelve a envido), falta envido cierra la secuencia. | envido |
-| Querido: suma de lo cantado (envido 2, real envido 3). Con falta envido en la secuencia, vale la falta (reemplaza lo anterior) **[estándar]**. | envido |
-| No querido: quien cantó suma 1 si hubo un solo canto, o lo que valía lo cantado antes de la última subida. Ej.: envido-envido-real envido no querido = 4. | envido |
-| Se resuelve automáticamente en el servidor. Empate: gana el mano. | engine |
-| **Canto de los tantos [elegida]**: canta primero el mano. El pie solo revela sus tantos si lo supera; si no, dice "son buenas" y **sus tantos nunca se muestran** al rival. (En 2 vs 2 sigue el orden de asiento: solo canta quien supera al equipo que va ganando.) | engine, views |
-| **Sin ayudas**: la proyección no incluye el cálculo de los propios tantos; cada jugador los cuenta él mismo. | views |
-
-### Falta envido
-
-| Regla | Test |
-|---|---|
-| A 15 puntos: lo que le falta al líder del marcador para llegar a 15. | scoring, engine |
-| A 30 puntos, líder con menos de 15 (malas): lo que le falta para 15. | scoring, engine |
-| A 30 puntos, líder con 15 o más: lo que le falta para 30. Con el líder en exactamente 15 (último punto de las malas) vale 15: ya completó las malas, así que cuenta hasta 30. | scoring (14, 15 y 16 puntos), engine |
-
-## Ir al mazo
-
-| Regla | Test |
-|---|---|
-| Se puede ir al mazo en el propio turno o al tener que responder un canto. | engine |
-| El rival suma el valor del truco querido (1 si no se cantó o no se quiso). | engine |
-| **[elegida]** En la primera baza, si el envido todavía se podía cantar (no se cantó y no se quiso truco), el rival suma **1 punto extra por el envido**. | engine |
-| Irse al mazo con un envido pendiente equivale a no quererlo: primero cobra el envido quien lo cantó y después se cierra la mano. | engine |
-
-## Fin de partida
-
-| Regla | Test |
-|---|---|
-| Gana el primero en llegar a 15/30, **incluso a mitad de una mano** (por ejemplo, con un envido). El marcador no pasa del objetivo. | engine, simulation |
-| A 30 puntos el marcador se muestra en malas (0–15) y buenas (16–30). **Con 15 justos se sigue en malas** **[elegida]**. Lo decide una sola función, `scoring.js#scoreSection` (constante `MALAS_LAST_POINT`); el front recibe `scoreSections` en el estado proyectado y no recalcula la frontera. | scoring (14, 15 y 16 puntos) |
-
-## Tiempo y abandono (los dispara `matchService`)
-
-| Regla | Test |
-|---|---|
-| Vence el tiempo con un canto pendiente: se toma como **no quiero**. | engine |
-| Vence el tiempo cuando había que jugar: pierde la mano, el rival suma el valor del truco (sin el punto extra del envido, porque no es un mazo voluntario). | engine |
-| Abandono: la partida termina a favor del otro equipo; el marcador no cambia (`endReason: 'abandon'`). | engine |
-
-## Proyección por jugador
-
-`projectStateFor(state, playerId)` es lo único que se envía a los clientes: incluye mis cartas, las
-cartas jugadas, el marcador, los cantos, de quién es el turno y `availableActions`. Nunca incluye las
-cartas no jugadas del rival, el mazo, las cartas repartidas originales ni el cálculo de tantos. De los
-tantos solo se ven los que se cantaron en un envido querido. Verificado sobre partidas completas
-simuladas (`views`).
-
-## Pendiente / a decidir
-
-- **Flor** (cuando se habilite): puntaje con dos flores (achicarse, contraflor, contraflor al resto) y
-  si la flor no cantada se pierde al jugar la segunda carta.
-- 2 vs 2: reglas confirmadas abajo (M8.1).
-
-## 2 vs 2 (M8) — reglas confirmadas por el dueño (05/10/2026)
-
-Todo lo que no se menciona acá funciona igual que en 1 vs 1, por equipo. El 1 vs 1 no cambia.
-
-| Tema | Regla | Test |
+| Id | Regla | Tests |
 |---|---|---|
-| Equipos | Asientos 0 y 2 (equipo A) contra 1 y 3 (equipo B): compañeros enfrentados. | engine2v2 |
-| Sentido | 0 → 1 → 2 → 3. En pantalla, cada jugador se ve abajo y el siguiente queda a su derecha (antihorario). | engine2v2 |
-| Reparto y mano | Reparte un asiento que rota cada mano; es mano el siguiente al que reparte. 3 cartas a cada uno. | engine2v2 |
-| Orden de la baza | Empieza el mano; en las siguientes, quien jugó la carta ganadora de la baza anterior. | engine2v2 |
-| Ganador de la baza | Carta más alta. Empate entre equipos distintos: parda. Empate entre compañeros: gana ese equipo (y abre quien la jugó primero). | engine2v2 |
-| Tras una parda | Empieza el mano y sigue la ronda antihoraria. | engine2v2 |
-| Ganador de la mano | Mismas reglas de bazas y pardas que 1 vs 1, por equipo; tres pardas: gana el equipo del mano. | engine2v2 |
-| **Quién responde un canto** | **Uno solo de los rivales: el más mano**, es decir, el rival que juega antes en el orden de la baza en curso. Ej.: orden A1, B1, A2, B2; si canta A2, responde B1. Vale para truco, retruco, vale cuatro y envido. Solo él ve "Quiero" y "No quiero" (y puede subir o irse al mazo). | engine2v2 |
-| Truco | Lo canta cualquiera en su turno. "El quiero" es del equipo que aceptó: cualquiera de sus dos jugadores puede subir en su turno, y el que responde puede subir al responder. | engine2v2 |
-| **Envido** | **Solo lo cantan los pies** (el último de cada pareja en la primera baza: el compañero del mano y el que reparte), en su turno de la primera baza, antes de jugar su carta. Lo responde el rival más mano, que puede subirlo. | engine2v2 |
-| El envido está primero | Si en la primera baza cantan truco, **quien lo responde puede anteponer el envido aunque no sea pie**. | engine2v2 |
-| Canto de tantos | Desde el mano en el sentido del juego: el primero canta; los siguientes pasan si su equipo ya gana, cantan si superan estrictamente al mejor revelado, o dicen "son buenas". Gana el equipo que va ganando al final (el empate lo gana quien cantó antes). Los tantos no revelados no se envían a nadie, **ni al compañero**. | engine2v2, views |
-| Ir al mazo | El mazo es del equipo: si uno se va, su equipo pierde la mano (mismas sumas que en 1 vs 1). Puede irse quien está en turno o quien debe responder un canto. | engine2v2 |
-| Tiempo | Turno por jugador (20 s). Canto pendiente: el reloj corre para el rival que debe responder; si vence, "no quiero". | engine2v2 |
-| Flor | No existe. | — |
+| R-ENV-01 | Tantos: cada carta vale su número (1 a 7); 10, 11 y 12 valen 0. Con dos o más del mismo palo: las dos de mayor valor + 20; si no, la de mayor valor. Rango 0 a 33. | oracle (las 9.880 manos) |
+| R-ENV-02 | Combinaciones permitidas y sus puntos: la tabla de abajo, y ninguna otra (D-6). | oracle, matrix |
+| R-ENV-03 | Momentos: solo en la primera baza y una vez por mano; 1 vs 1 cada uno en su turno antes de tirar su carta; 2 vs 2 solo los pies en su turno; nunca después de querido el truco (D-7). | rules, matrix |
+| R-ENV-04 | Falta envido: lo que le falta al líder para 15 (a 15); a 30, hasta 15 si está en malas por debajo de 15, y hasta 30 con 15 justos o en buenas. Una sola función (`faltaEnvidoPoints`). | oracle (todos los marcadores) |
+| R-ENV-05 | Canto de tantos (1 vs 1): canta primero el mano; el otro solo revela si tiene **estrictamente más**; si no, "son buenas" y sus tantos no se envían a nadie. Empate: gana el mano. | rules, oracle |
+| R-ENV-06 | Canto de tantos (2 vs 2): desde el mano en el sentido del juego; cada uno revela solo si supera estrictamente al mejor revelado del otro equipo; los demás "son buenas" o pasan. Los no revelados no se envían a nadie, tampoco al compañero. | rules, oracle |
+| R-ENV-07 | Los puntos del envido se suman en cuanto se resuelve, antes de seguir con la mano (y pueden terminar la partida). | rules |
+| R-ENV-08 | "El envido está primero": quien responde un truco no querido puede cantar envido; resuelto el envido, el truco vuelve a quedar pendiente para el mismo que respondía. | rules, matrix |
+| R-ENV-09 | El envido lo responde un solo rival, el más mano (puede subirlo). | rules |
+| R-ENV-10 | Sin ayudas: la proyección no incluye el cálculo de los tantos propios. | rules |
+
+| Secuencia | Querido | No querido |
+|---|---|---|
+| Envido | 2 | 1 |
+| Envido, envido | 4 | 2 |
+| Real envido | 3 | 1 |
+| Envido, real envido | 5 | 2 |
+| Envido, envido, real envido | 7 | 4 |
+| Falta envido | Falta | 1 |
+| Envido, falta envido | Falta | 2 |
+| Envido, envido, falta envido | Falta | 4 |
+| Real envido, falta envido | Falta | 3 |
+| Envido, real envido, falta envido | Falta | 5 |
+| Envido, envido, real envido, falta envido | Falta | 7 |
+
+## Mazo, tiempo y abandono
+
+| Id | Regla | Tests |
+|---|---|---|
+| R-MAZO-IR-01 | Irse al mazo: el rival suma lo que valía la mano (1, o el truco querido) y, en la primera baza con el envido todavía posible, 1 punto más **[elegida]**. | oracle, rules |
+| R-MAZO-IR-02 | Se puede ir al mazo en el propio turno o al tener que responder un canto. Con un envido pendiente equivale a no quererlo: primero cobra el envido quien lo cantó. | rules, matrix |
+| R-MAZO-IR-03 | (2 vs 2) El mazo es de la pareja: si uno se va, su equipo pierde la mano. | rules |
+| R-TIEMPO-01 | Turno vencido al tener que jugar: pierde la mano, sin el punto extra del envido (D-3). | rules |
+| R-TIEMPO-02 | Canto pendiente vencido: "no quiero" del que debía responder. | rules |
+| R-TIEMPO-03 | El reloj es del servidor y es de la decisión: entrar o volver a la mesa no lo reinicia; si quien debe actuar está desconectado, se pausa y retoma con lo que quedaba. | realtime |
+| R-ABAND-01 | Gracia de reconexión de 60 s; vencida (o si nunca entra a la mesa), abandona. | realtime |
+| R-ABAND-02 | (2 vs 2) Tope de 120 s de pausa acumulada por desconexión por jugador; superado, abandona. | realtime |
+| R-ABAND-03 | Abandono: gana el otro equipo y el marcador no cambia (`endReason: 'abandon'`). | rules |
+
+## Puntos y fin de partida
+
+| Id | Regla | Tests |
+|---|---|---|
+| R-PUNT-01 | Los puntos de un equipo nunca bajan y son enteros. | properties |
+| R-PUNT-02 | Solo suman puntos el envido, la mano (truco o sin cantos), el mazo y los vencimientos. | properties |
+| R-PUNT-03 | Malas y buenas (a 30): una sola función, `scoreSection` (D-1); el front recibe `scoreSections` y no recalcula. | oracle |
+| R-FIN-01 | La partida termina en el instante en que un equipo llega al objetivo, aunque sea a mitad de mano; después no se acepta ninguna acción. | rules, properties |
+| R-FIN-02 | Hay exactamente un ganador. | properties |
+| R-FIN-03 | El puntaje se topea al objetivo (D-8). | rules |
+
+## Visibilidad
+
+| Id | Regla | Tests |
+|---|---|---|
+| R-VIS-01 | Ningún mensaje a un cliente contiene una carta no jugada de otro jugador (incluido el compañero en 2 vs 2), ni con la partida terminada. | properties, realtime |
+| R-VIS-02 | Ningún mensaje contiene tantos no revelados. | properties |
+| R-VIS-03 | Ninguna seña llega a un rival. | realtime |
+| R-VIS-04 | Los mensajes de una partida nunca llegan a jugadores de otra. | realtime |
+
+## Fichas
+
+| Id | Regla | Tests |
+|---|---|---|
+| R-ECO-01 | Crédito diario: una sola vez por día calendario en `America/Argentina/Buenos_Aires`, aunque se pida en paralelo; requiere email verificado si así se configura. | economy |
+| R-ECO-02 | Inicio con apuesta: todas las apuestas se bloquean en una sola transacción; si a uno no le alcanza, no se bloquea ninguna. | economy |
+| R-ECO-03 | Fin normal: 1 vs 1, el ganador cobra el pozo; 2 vs 2, cada ganador cobra 2 apuestas. | economy |
+| R-ECO-04 | Abandono: 1 vs 1, el rival cobra el pozo; 2 vs 2, pierden los dos de la pareja (D-9). | economy |
+| R-ECO-05 | Cancelación (reinicio del servidor, partida congelada por una verificación): devolución total a todos. | economy |
+| R-ECO-06 | Comisión: se redondea hacia abajo y el resto de dividir entre ganadores queda en la casa (D-10). Lo bloqueado = lo pagado + lo devuelto + la comisión. | economy |
+| R-ECO-07 | Torneos: inscripción al anotarse, devolución si sale antes del sorteo o si vence, premio único al campeón. | economy |
+| R-ECO-08 | Revancha: apuestas nuevas bloqueadas como una partida nueva; si a alguno no le alcanza, no arranca. | economy |
+| R-ECO-09 | Saldo entero y nunca negativo; saldo = suma del ledger; cada clave de idempotencia una sola vez; cada partida se liquida una sola vez. | economy |
+
+## Matriz de cantos
+
+La matriz completa "estado de la mano × acción → permitida o no" se genera desde
+`src/game/truco/__tests__/matrix.js` con `npm run rules:matrix` y se testea celda por celda (`matrix.test.js`).
+
+<!-- MATRIZ:INICIO -->
+
+Generada automáticamente: no editar a mano. En cada estado, **solo** el jugador indicado puede actuar y solo con esas
+acciones; cualquier otra acción de cualquier jugador se rechaza (lo verifica `matrix.test.js`, celda por celda).
+
+| Celda | Modo | Estado | Quién puede actuar y con qué |
+|---|---|---|---|
+| M1 | 1 vs 1 | 1.ª baza, nadie jugó (turno del mano) | **mano**: jugar carta, truco, envido, real envido, falta envido, mazo |
+| M2 | 1 vs 1 | 1.ª baza, ya jugó el mano (turno del pie) | **pie**: jugar carta, truco, envido, real envido, falta envido, mazo |
+| M3 | 1 vs 1 | Truco cantado, pendiente, envido todavía posible | **pie**: quiero, no quiero, retruco, envido, real envido, falta envido, mazo |
+| M4 | 1 vs 1 | Truco querido (el quiero es del pie); turno del mano | **mano**: jugar carta, mazo |
+| M5 | 1 vs 1 | Truco querido (el quiero es del pie); turno del pie | **pie**: jugar carta, retruco, mazo |
+| M6 | 1 vs 1 | Retruco pendiente | **mano**: quiero, no quiero, vale cuatro, mazo |
+| M7 | 1 vs 1 | Retruco querido (el quiero es del mano); turno del mano | **mano**: jugar carta, vale cuatro, mazo |
+| M8 | 1 vs 1 | Vale cuatro pendiente | **pie**: quiero, no quiero, mazo |
+| M9 | 1 vs 1 | Vale cuatro querido; turno del mano | **mano**: jugar carta, mazo |
+| M10 | 1 vs 1 | Envido pendiente | **pie**: quiero, no quiero, envido, real envido, falta envido, mazo |
+| M11 | 1 vs 1 | Envido, envido pendiente | **mano**: quiero, no quiero, real envido, falta envido, mazo |
+| M12 | 1 vs 1 | Real envido pendiente | **pie**: quiero, no quiero, falta envido, mazo |
+| M13 | 1 vs 1 | Envido, envido, real envido pendiente | **pie**: quiero, no quiero, falta envido, mazo |
+| M14 | 1 vs 1 | Falta envido pendiente | **pie**: quiero, no quiero, mazo |
+| M15 | 1 vs 1 | Envido resuelto; turno del mano en la 1.ª baza | **mano**: jugar carta, truco, mazo |
+| M16 | 1 vs 1 | "El envido está primero": el pie respondió el truco con envido | **mano**: quiero, no quiero, envido, real envido, falta envido, mazo |
+| M17 | 1 vs 1 | Resuelto ese envido, el truco vuelve a estar pendiente para el pie | **pie**: quiero, no quiero, retruco, mazo |
+| M18 | 1 vs 1 | Truco querido en la 1.ª baza: ya no hay envido | **pie**: jugar carta, mazo |
+| M19 | 1 vs 1 | 2.ª baza, turno del que ganó la 1.ª | **mano**: jugar carta, truco, mazo |
+| M20 | 1 vs 1 | 2.ª baza, truco cantado: no se puede anteponer el envido | **pie**: quiero, no quiero, retruco, mazo |
+| M21 | 2 vs 2 | 1.ª baza, nadie jugó (turno del mano, que no es pie) | **A1 (mano)**: jugar carta, truco, mazo |
+| M22 | 2 vs 2 | 1.ª baza, jugó el mano (turno del rival, que no es pie) | **B1**: jugar carta, truco, mazo |
+| M23 | 2 vs 2 | 1.ª baza, turno del pie del equipo mano | **A2 (pie de A)**: jugar carta, truco, envido, real envido, falta envido, mazo |
+| M24 | 2 vs 2 | 1.ª baza, jugaron todos menos uno (turno del otro pie) | **B2 (pie de B, reparte)**: jugar carta, truco, envido, real envido, falta envido, mazo |
+| M25 | 2 vs 2 | Truco del pie A2: responde solo el rival más mano (B1); su compañero no | **B1**: quiero, no quiero, retruco, envido, real envido, falta envido, mazo |
+| M26 | 2 vs 2 | Envido del pie A2: responde solo B1 | **B1**: quiero, no quiero, envido, real envido, falta envido, mazo |
+| M27 | 2 vs 2 | Truco del mano A1 antes de jugar: responde B1, que no es pie pero puede anteponer el envido | **B1**: quiero, no quiero, retruco, envido, real envido, falta envido, mazo |
+| M28 | 2 vs 2 | Truco querido por B; turno de A1: puede jugar o irse, no subir (el quiero es de B) | **A1 (mano)**: jugar carta, mazo |
+
+<!-- MATRIZ:FIN -->
+
+## Pendiente (fuera del alcance actual)
+
+- **Flor** (cuando se habilite): puntaje con dos flores y si la flor no cantada se pierde al jugar la segunda carta.

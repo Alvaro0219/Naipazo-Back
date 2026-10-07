@@ -179,7 +179,7 @@ describe.skipIf(!hasTestDb)('salas y partidas (integración)', () => {
       expect(await balanceOf(host.id)).toBe(1000);
     });
 
-    it('si el que se une no tiene saldo, no se bloquea nada y la sala sigue esperando', async () => {
+    it('R-ECO-02: si el que se une no tiene saldo, no se bloquea nada y la sala sigue esperando', async () => {
       const host = await createUser({ chips: true });
       const poor = await createUser();
       const room = await roomService.createRoom(host, { uuid: randomUUID(), targetPoints: 15, bet: 300 });
@@ -189,7 +189,7 @@ describe.skipIf(!hasTestDb)('salas y partidas (integración)', () => {
       expect(await Match.countDocuments()).toBe(0);
     });
 
-    it('al empezar se bloquean ambas apuestas y al terminar el ganador cobra el pozo', async () => {
+    it('R-ECO-02 / R-ECO-03: al empezar se bloquean ambas apuestas y al terminar el ganador cobra el pozo', async () => {
       const { host, guest, matchId } = await startTable({ bet: 300 });
       expect(await balanceOf(host.id)).toBe(700);
       expect(await balanceOf(guest.id)).toBe(700);
@@ -212,13 +212,13 @@ describe.skipIf(!hasTestDb)('salas y partidas (integración)', () => {
       expect(finished.data.chips.players.find((p) => p.userId === loserId)).toMatchObject({ received: 0, net: -300 });
     }, 60000);
 
-    it('la comisión de la casa se descuenta del pozo', () => {
+    it('R-ECO-06: la comisión de la casa se descuenta del pozo', () => {
       const players = [{ userId: 'a', team: 0, betLocked: 500 }, { userId: 'b', team: 1, betLocked: 500 }];
       expect(computePayouts({ players, winnerTeam: 1 }, 0)).toEqual([{ userId: 'b', amount: 1000 }]);
       expect(computePayouts({ players, winnerTeam: 1 }, 0.05)).toEqual([{ userId: 'b', amount: 950 }]);
     });
 
-    it('al reiniciar, las partidas en juego se cancelan y se devuelven las apuestas', async () => {
+    it('R-ECO-05: al reiniciar, las partidas en juego se cancelan y se devuelven las apuestas', async () => {
       const { host, guest, room, matchId } = await startTable({ bet: 250 });
       matchService.clearRuntimes();
 
@@ -235,7 +235,7 @@ describe.skipIf(!hasTestDb)('salas y partidas (integración)', () => {
   });
 
   describe('abandono, desconexión y tiempos', () => {
-    it('abandonar es derrota: el rival cobra y queda registrado', async () => {
+    it('R-ECO-04 / R-ABAND-03: abandonar es derrota: el rival cobra y queda registrado', async () => {
       const { host, guest, matchId } = await startTable({ bet: 200 });
       await matchService.abandonMatch(host.id, matchId);
 
@@ -248,7 +248,7 @@ describe.skipIf(!hasTestDb)('salas y partidas (integración)', () => {
       await expect(matchService.abandonMatch(guest.id, matchId)).rejects.toMatchObject({ code: 'MATCH_NOT_ACTIVE' });
     });
 
-    it('si no vuelve dentro de la gracia, pierde por abandono', async () => {
+    it('R-ABAND-01: si no vuelve dentro de la gracia, pierde por abandono', async () => {
       matchService.settings.reconnectGraceMs = 80;
       const { host, guest, matchId, sockets } = await startTable();
 
@@ -263,7 +263,7 @@ describe.skipIf(!hasTestDb)('salas y partidas (integración)', () => {
       expect(host.id).toBeTruthy();
     });
 
-    it('si vuelve a tiempo, sigue la partida y el rival recibe el aviso', async () => {
+    it('R-ABAND-01: si vuelve a tiempo, sigue la partida y el rival recibe el aviso', async () => {
       matchService.settings.reconnectGraceMs = 200;
       const { guest, matchId, sockets } = await startTable();
       matchService.detachSocket(guest.id, sockets[guest.id].id);
@@ -276,7 +276,7 @@ describe.skipIf(!hasTestDb)('salas y partidas (integración)', () => {
       expect(matchService.getRuntime(matchId).finished).toBe(false);
     });
 
-    it('vence el tiempo de turno: se resuelve solo y sigue el juego', async () => {
+    it('R-TIEMPO-01: vence el tiempo de turno: se resuelve solo y sigue el juego', async () => {
       matchService.settings.turnTimeoutMs = 60;
       const { matchId } = await startTable();
       const rt = matchService.getRuntime(matchId);
@@ -288,7 +288,7 @@ describe.skipIf(!hasTestDb)('salas y partidas (integración)', () => {
       }));
     });
 
-    it('el turno no corre mientras quien debe jugar está desconectado', async () => {
+    it('R-TIEMPO-03: el turno no corre mientras quien debe jugar está desconectado', async () => {
       matchService.settings.turnTimeoutMs = 40;
       matchService.settings.reconnectGraceMs = 10000;
       const { matchId, sockets } = await startTable();
@@ -301,7 +301,7 @@ describe.skipIf(!hasTestDb)('salas y partidas (integración)', () => {
       expect(rt.state.score).toEqual([0, 0]);
     });
 
-    it('volver al lobby y regresar a la mesa NO reinicia el reloj del turno', async () => {
+    it('R-TIEMPO-03: volver al lobby y regresar a la mesa NO reinicia el reloj del turno', async () => {
       matchService.settings.turnTimeoutMs = 600;
       const { matchId, sockets } = await startTable();
       const rt = matchService.getRuntime(matchId);
@@ -326,7 +326,7 @@ describe.skipIf(!hasTestDb)('salas y partidas (integración)', () => {
       }));
     });
 
-    it('si se desconecta y vuelve, retoma el tiempo que le quedaba (no uno nuevo)', async () => {
+    it('R-TIEMPO-03: si se desconecta y vuelve, retoma el tiempo que le quedaba (no uno nuevo)', async () => {
       matchService.settings.turnTimeoutMs = 1000;
       matchService.settings.reconnectGraceMs = 10000;
       const { matchId, sockets } = await startTable();
@@ -363,7 +363,7 @@ describe.skipIf(!hasTestDb)('salas y partidas (integración)', () => {
   });
 
   describe('partida completa', () => {
-    it('se juega hasta el final sin filtrar cartas, y queda registrada', async () => {
+    it('R-VIS-01: se juega hasta el final sin filtrar cartas, y queda registrada', async () => {
       const [host, guest] = [await createUser(), await createUser()];
       const room = await roomService.createRoom(host, { uuid: randomUUID(), targetPoints: 15, bet: 0 });
       const { matchId } = await roomService.joinRoom(guest, room.id);
@@ -409,7 +409,7 @@ describe.skipIf(!hasTestDb)('salas y partidas (integración)', () => {
       expect(emissions.some((e) => e.event === 'game:finished' && e.target === `match:${matchId}`)).toBe(true);
     }, 120000);
 
-    it('ignora acciones repetidas y rechaza a quien no juega', async () => {
+    it('R-TURNO-01: ignora acciones repetidas y rechaza a quien no juega', async () => {
       const outsider = await createUser();
       const { matchId } = await startTable();
       const rt = matchService.getRuntime(matchId);

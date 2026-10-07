@@ -32,6 +32,10 @@ const MatchSchema = new mongoose.Schema({
   abandoners: { type: [mongoose.Schema.Types.ObjectId], default: [] },
   // false mientras haya apuestas bloqueadas sin pagar ni devolver (se reintenta al arrancar el server)
   betsSettled: { type: Boolean, default: true, index: true },
+  // R-ECO-06: lo que quedó en la casa al liquidar (comisión + resto de dividir entre ganadores)
+  houseCut: { type: Number, default: 0 },
+  // P8: versión de las reglas con la que se jugó (para reproducir y auditar la partida)
+  rulesVersion: { type: Number, default: 1 },
   // Partidas de torneo: sin apuesta propia (el pozo lo retiene el torneo)
   tournamentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tournament', default: null, index: true },
   round: { type: Number, default: null },

@@ -143,7 +143,7 @@ describe.skipIf(!hasTestDb)('2 vs 2 (integración)', () => {
   });
 
   describe('apuestas', () => {
-    it('al completarse se bloquean las 4 apuestas en una transacción', async () => {
+    it('R-ECO-02: al completarse se bloquean las 4 apuestas en una transacción', async () => {
       const { players, matchId } = await fullTable({ bet: 100 });
       for (const p of players) expect(await balanceOf(p.id)).toBe(900);
       const match = await Match.findById(matchId).lean();
@@ -151,7 +151,7 @@ describe.skipIf(!hasTestDb)('2 vs 2 (integración)', () => {
       expect(match.players.map((p) => [p.seat, p.team, p.betLocked])).toEqual([[0, 0, 100], [1, 1, 100], [2, 0, 100], [3, 1, 100]]);
     });
 
-    it('si a uno ya no le alcanza al confirmar el último, no se bloquea ninguna y se borran las confirmaciones', async () => {
+    it('R-ECO-02: si a uno ya no le alcanza al confirmar el último, no se bloquea ninguna y se borran las confirmaciones', async () => {
       const players = [];
       for (let i = 0; i < 4; i++) players.push(await createUser({ chips: true }));
       const admin = await createUser();
@@ -171,7 +171,7 @@ describe.skipIf(!hasTestDb)('2 vs 2 (integración)', () => {
       await expect(roomService.confirmReady(players[1], room.id)).rejects.toMatchObject({ code: 'INSUFFICIENT_BALANCE' });
     });
 
-    it('partida normal: cada ganador cobra 2 apuestas; las fichas se conservan', async () => {
+    it('R-ECO-03: partida normal: cada ganador cobra 2 apuestas; las fichas se conservan', async () => {
       const { players, matchId } = await fullTable({ bet: 100 });
       const rt = await playToEnd(matchId, 7);
       const winners = rt.state.players.filter((p) => p.team === rt.state.winnerTeam).map((p) => p.id);
@@ -188,7 +188,7 @@ describe.skipIf(!hasTestDb)('2 vs 2 (integración)', () => {
       expect(u.stats.played).toBe(0);
     });
 
-    it('abandona uno: pierden los dos de la pareja y cada rival cobra 2 apuestas', async () => {
+    it('R-ECO-04: abandona uno: pierden los dos de la pareja y cada rival cobra 2 apuestas', async () => {
       const { players, matchId } = await fullTable({ bet: 100 });
       const [a1, b1, a2, b2] = players;
       await matchService.abandonMatch(a1.id, matchId);
@@ -223,7 +223,7 @@ describe.skipIf(!hasTestDb)('2 vs 2 (integración)', () => {
       expect(await balanceOf(b2.id)).toBe(1100);
     });
 
-    it('si se cancela antes de terminar (reinicio), se devuelve todo a los 4', async () => {
+    it('R-ECO-05: si se cancela antes de terminar (reinicio), se devuelve todo a los 4', async () => {
       const { players } = await fullTable({ bet: 100 });
       matchService.clearRuntimes();
       await matchService.recoverOnStartup();
@@ -232,7 +232,7 @@ describe.skipIf(!hasTestDb)('2 vs 2 (integración)', () => {
   });
 
   describe('desconexión', () => {
-    it('la pausa acumulada por desconexión tiene tope: superado, abandona', async () => {
+    it('R-ABAND-02: la pausa acumulada por desconexión tiene tope: superado, abandona', async () => {
       Object.assign(matchService.settings, { maxDisconnectPauseMs: 300, reconnectGraceMs: 10000 });
       const { players, matchId, sockets } = await fullTable({ bet: 0 });
       const [, b1] = players;
@@ -243,7 +243,7 @@ describe.skipIf(!hasTestDb)('2 vs 2 (integración)', () => {
       expect(String(match.abandonedBy)).toBe(b1.id);
     });
 
-    it('en una partida completa, ningún socket recibe cartas en mano de otro jugador (ni del compañero)', async () => {
+    it('R-VIS-01: en una partida completa, ningún socket recibe cartas en mano de otro jugador (ni del compañero)', async () => {
       const { matchId } = await fullTable({ bet: 0 });
       let rng = 11;
       const pick = (n) => { rng = (rng * 1103515245 + 12345) % 2147483648; return rng % n; };
@@ -273,7 +273,7 @@ describe.skipIf(!hasTestDb)('2 vs 2 (integración)', () => {
   });
 
   describe('señas', () => {
-    it('la seña llega solo al compañero; los rivales nunca la reciben', async () => {
+    it('R-VIS-03: la seña llega solo al compañero; los rivales nunca la reciben', async () => {
       const { players, matchId } = await fullTable({ bet: 0 });
       const [a1, b1, a2, b2] = players;
       emissions.length = 0;
@@ -300,7 +300,7 @@ describe.skipIf(!hasTestDb)('2 vs 2 (integración)', () => {
       expect(() => matchService.sendSign(host.id, { matchId: soloMatch, sign: 'UN_TRES' })).toThrow(expect.objectContaining({ code: 'SIGNS_NOT_AVAILABLE' }));
     });
 
-    it('en una partida completa con señas, ningún rival recibe una y quedan en el registro de la mano', async () => {
+    it('R-VIS-03: en una partida completa con señas, ningún rival recibe una y quedan en el registro de la mano', async () => {
       const { players, matchId } = await fullTable({ bet: 0 });
       const teamOf = Object.fromEntries(players.map((p, seat) => [p.id, seat % 2]));
       let rng = 5;
@@ -339,7 +339,7 @@ describe.skipIf(!hasTestDb)('2 vs 2 (integración)', () => {
   });
 
   describe('revancha 2 vs 2', () => {
-    it('arranca recién cuando aceptan los 4, con los mismos asientos y la apuesta bloqueada otra vez', async () => {
+    it('R-ECO-08: arranca recién cuando aceptan los 4, con los mismos asientos y la apuesta bloqueada otra vez', async () => {
       const { players, matchId } = await fullTable({ bet: 100 });
       await playToEnd(matchId, 9);
       for (const p of players.slice(0, 3)) {

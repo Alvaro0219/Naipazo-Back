@@ -71,7 +71,7 @@ describe.skipIf(!hasTestDb)('torneos (integración)', () => {
   });
 
   describe('inscripción', () => {
-    it('crear cobra la inscripción del host, es idempotente y aparece en la lista', async () => {
+    it('R-ECO-07: crear cobra la inscripción del host, es idempotente y aparece en la lista', async () => {
       const [host] = await createPlayers(1);
       const uuid = randomUUID();
       const a = await tournamentService.createTournament(host, { uuid, size: 4, buyIn: 500, targetPoints: 15 });
@@ -105,7 +105,7 @@ describe.skipIf(!hasTestDb)('torneos (integración)', () => {
       for (const u of [host, ...others]) expect(await balanceOf(u.id)).toBe(await getLedgerSum(u.id));
     });
 
-    it('salir devuelve la inscripción, y volver a entrar y salir también', async () => {
+    it('R-ECO-07: salir devuelve la inscripción, y volver a entrar y salir también', async () => {
       const [host, guest] = await createPlayers(2);
       const t = await tournamentService.createTournament(host, { uuid: randomUUID(), size: 4, buyIn: 200, targetPoints: 15 });
       await tournamentService.joinTournament(guest, t.id);
@@ -164,7 +164,7 @@ describe.skipIf(!hasTestDb)('torneos (integración)', () => {
       expect(new Set(notices.map((e) => e.target))).toEqual(new Set(players.map((p) => `user:${p.id}`)));
     });
 
-    it('torneo de 4 completo: el campeón cobra todo el pozo y las fichas solo cambian de dueño', async () => {
+    it('R-ECO-07: torneo de 4 completo: el campeón cobra todo el pozo y las fichas solo cambian de dueño', async () => {
       const players = await createPlayers(4);
       const before = await totalChips(players);
       const created = await tournamentService.createTournament(players[0], { uuid: randomUUID(), size: 4, buyIn: 500, targetPoints: 15 });
@@ -235,7 +235,7 @@ describe.skipIf(!hasTestDb)('torneos (integración)', () => {
         .resolves.toMatchObject({ status: 'waiting' });
     });
 
-    it('al reiniciar el servidor se cancela y devuelve todas las inscripciones', async () => {
+    it('R-ECO-05 / R-ECO-07: al reiniciar el servidor se cancela y devuelve todas las inscripciones', async () => {
       const { players, tournamentId } = await fullTournament({ size: 4, buyIn: 250 });
       matchService.clearRuntimes();
       await tournamentService.recoverOnStartup();
