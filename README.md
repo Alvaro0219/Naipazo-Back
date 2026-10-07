@@ -41,7 +41,9 @@ Verificación rápida: `GET http://localhost:4000/health` → `{"ok":true}`.
 - **Guarda:** si el nombre de la base de `MONGO_URL_TEST` no termina en `_test`, o es la misma que
   `MONGO_URL`, los tests de integración se niegan a conectar (`src/utils/testDbGuard.js`).
 - **No correr la suite dos veces a la vez** (por ejemplo, dos terminales con `npm test`): comparten la
-  base de pruebas, se borran los datos entre sí y fallan tests al azar. Dura unos 3 minutos.
+  base de pruebas, se borran los datos entre sí y fallan tests al azar (o la suite queda colgada). Dura unos
+  8 minutos. Si una corrida se cortó a mitad de camino, revisá que no haya quedado un proceso de vitest vivo
+  antes de volver a correrla.
 
 ## Variables de entorno
 

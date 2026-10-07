@@ -7,17 +7,25 @@ const CLOSED_STATUSES = ['finished', 'cancelled'];
 
 function resultFor(match, me) {
   if (match.status === 'cancelled') return 'cancelled';
+  if (me.result === 'no-result') return 'no-result'; // 2 vs 2: abandonó su compañero
   return me.team === match.winnerTeam ? 'won' : 'lost';
 }
 
+const publicPlayer = (p) => ({ id: String(p.userId), username: p.username });
+
 function toHistoryItem(match, userId) {
   const me = match.players.find((p) => String(p.userId) === userId);
-  const opponent = match.players.find((p) => String(p.userId) !== userId);
+  const mode = match.config.mode || (match.players.length === 4 ? '2v2' : '1v1');
+  const rivals = match.players.filter((p) => p.team !== me.team);
+  const partner = match.players.find((p) => p.team === me.team && String(p.userId) !== userId);
+  const opponent = rivals[0];
   const chips = buildChipsSummary(match)?.players.find((p) => p.userId === userId) ?? null;
   return {
     id: String(match._id),
-    config: { targetPoints: match.config.targetPoints, bet: match.config.bet || 0 },
-    opponent: opponent ? { id: String(opponent.userId), username: opponent.username } : null,
+    config: { targetPoints: match.config.targetPoints, bet: match.config.bet || 0, mode, isPrivate: Boolean(match.config.isPrivate) },
+    opponent: opponent ? publicPlayer(opponent) : null,
+    partner: partner ? publicPlayer(partner) : null,
+    rivals: rivals.map(publicPlayer),
     myTeam: me.team,
     myScore: match.score[me.team],
     opponentScore: match.score[1 - me.team],

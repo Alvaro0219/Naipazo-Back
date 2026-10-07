@@ -35,6 +35,13 @@ export function toPublicUser(user) {
       tournamentsPlayed: user.stats?.tournamentsPlayed ?? 0,
       tournamentsWon: user.stats?.tournamentsWon ?? 0
     },
+    statsTwoVsTwo: {
+      played: user.statsTwoVsTwo?.played ?? 0,
+      won: user.statsTwoVsTwo?.won ?? 0,
+      lost: user.statsTwoVsTwo?.lost ?? 0,
+      abandoned: user.statsTwoVsTwo?.abandoned ?? 0,
+      chipsWon: user.statsTwoVsTwo?.chipsWon ?? 0
+    },
     createdAt: user.createdAt
   };
 }

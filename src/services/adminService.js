@@ -14,6 +14,7 @@ function toAdminUser(u) {
     isActive: u.isActive,
     balance: u.balance,
     stats: u.stats,
+    statsTwoVsTwo: u.statsTwoVsTwo,
     createdAt: u.createdAt
   };
 }
@@ -30,19 +31,27 @@ export async function chipFlows({ days = 30, minMatches = 3 } = {}) {
 
   const pairs = new Map();
   for (const m of matches) {
-    if (m.players.length !== 2 || m.winnerTeam === null) continue;
-    const [a, b] = [...m.players].sort((x, y) => String(x.userId).localeCompare(String(y.userId)));
-    const key = `${a.userId}:${b.userId}`;
-    const pair = pairs.get(key) || {
-      a: { id: String(a.userId), username: a.username, wins: 0 },
-      b: { id: String(b.userId), username: b.username, wins: 0 },
-      matches: 0, netToA: 0, lastAt: m.endedAt
-    };
-    const aWon = a.team === m.winnerTeam;
-    pair.matches += 1;
-    (aWon ? pair.a : pair.b).wins += 1;
-    pair.netToA += aWon ? m.config.bet : -m.config.bet;
-    pairs.set(key, pair);
+    if (m.winnerTeam === null) continue;
+    // En 1 vs 1 hay un solo par; en 2 vs 2, cada perdedor contra cada ganador (le pasa la mitad de su apuesta)
+    const amount = m.players.length === 2 ? m.config.bet : m.config.bet / 2;
+    const winners = m.players.filter((p) => p.team === m.winnerTeam);
+    const losers = m.players.filter((p) => p.team !== m.winnerTeam);
+    for (const w of winners) {
+      for (const l of losers) {
+        const [a, b] = [w, l].sort((x, y) => String(x.userId).localeCompare(String(y.userId)));
+        const key = `${a.userId}:${b.userId}`;
+        const pair = pairs.get(key) || {
+          a: { id: String(a.userId), username: a.username, wins: 0 },
+          b: { id: String(b.userId), username: b.username, wins: 0 },
+          matches: 0, netToA: 0, lastAt: m.endedAt
+        };
+        const aWon = a === w;
+        pair.matches += 1;
+        (aWon ? pair.a : pair.b).wins += 1;
+        pair.netToA += aWon ? amount : -amount;
+        pairs.set(key, pair);
+      }
+    }
   }
 
   return [...pairs.values()]

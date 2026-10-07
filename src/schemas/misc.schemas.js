@@ -8,6 +8,7 @@ export const idParamsSchema = Joi.object({
 export const rankingQuerySchema = Joi.object({
   by: Joi.string().valid('won', 'chips').default('won'),
   period: Joi.string().valid('all', 'month', 'week').default('all'),
+  mode: Joi.string().valid('1v1', '2v2').default('1v1'),
   page: Joi.number().integer().min(1),
   limit: Joi.number().integer().min(1).max(100)
 });

@@ -22,7 +22,7 @@ No hay linter configurado. Healthcheck: `GET /health` → `{"ok":true}`.
 
 Los tests de `src/services/__tests__/` son de integración y se **saltean** si `MONGO_URL_TEST` no está en
 `.env`. Esa base se **borra** (`dropDatabase`) antes de cada test: nunca apuntarla a `truco_db`.
-Corren en serie (`fileParallelism: false`) contra Atlas (~3 min). `connectTestDb` aborta si la base no termina en
+Corren en serie (`fileParallelism: false`) contra Atlas (~8 min). `connectTestDb` aborta si la base no termina en
 `_test` o coincide con `MONGO_URL` (`utils/testDbGuard.js`). Nunca correr dos suites a la vez: comparten la base.
 
 ## Reglas que no se deducen leyendo un solo archivo
@@ -145,12 +145,29 @@ Corren en serie (`fileParallelism: false`) contra Atlas (~3 min). `connectTestDb
   torneos de 4 y 8 con un socket por jugador sin ningún reemplazo.
 - **Frontera malas/buenas (P7):** solo `game/truco/scoring.js#scoreSection` (`MALAS_LAST_POINT = 15`).
 
+## 2 vs 2 (M8)
+
+- **Motor:** cada canto guarda `pending.responderSeat`: lo responde UN solo rival, el más mano de la baza en curso
+  (`responderSeatFor`, usa `bazas[i].leaderSeat`). En 2 vs 2 el envido lo cantan solo los pies (`isPie`); quien responde
+  un truco puede anteponer el envido. En 1 vs 1 todo queda igual. Tests: `engine2v2.test.js` y simulación de 4 bots.
+- **Salas:** `Room.config.mode` (`1v1`|`2v2`), `maxPlayers` 2|4 y asientos con `seat` (equipo = asiento % 2; las salas
+  viejas sin `seat` usan el orden del array: `seatsOf`). `joinRoom` ocupa el asiento y, al llenarse, crea el `Match` y
+  bloquea TODAS las apuestas en la misma transacción. `changeSeat` y `leaveRoom` (el anfitrión pasa al siguiente).
+- **Liquidación:** `betService.computeSettlement` (abandono de uno en 2 vs 2: compañero recupera su apuesta con
+  `BET_REFUND`, rivales 1,5 cada uno). `Match.abandoners` y `players[].result` (`no-result` para el compañero).
+  Estadísticas del 2 vs 2 en `User.statsTwoVsTwo` (las de 1 vs 1 y torneos siguen en `stats`, sin migración).
+- **Tiempo real:** tope de pausa por desconexión acumulada (`MAX_DISCONNECT_PAUSE_SECONDS`, solo 2 vs 2). Señas
+  (`matchService.sendSign`, evento `game:sign`): solo al compañero, una cada 2 s, guardadas en `MatchHandLog.signs` y
+  reenviadas en `game:state.signs` (solo las recibidas). Revancha: arranca cuando aceptan todos (`accepted`).
+- **Historial/ranking:** `mode`, `partner`, `rivals`; ranking con `mode` (1v1 lee `stats`, 2v2 `statsTwoVsTwo`).
+  Tests de integración: `twoVsTwo.test.js`.
+
 ## Hitos
 
 M0–M7 hechos (scaffold, auth, billetera, motor, salas + mesa, apuestas + timers + abandono, historial +
 ranking + perfil + admin, revancha + PWA + torneos) y Fase 2 P1–P9 (git, guarda de tests, diagnóstico de
-sesiones, email, integridad, vencimientos, reglas, tests del front, documentos). Próximo: **M8 — 2 vs 2** y
-después **M9 — despliegue** (Railway + Cloudflare Pages + Atlas; una sola instancia del back).
+sesiones, email, integridad, vencimientos, reglas, tests del front, documentos). **M8 — 2 vs 2** hecho.
+Próximo: **M9 — despliegue** (Railway + Cloudflare Pages + Atlas; una sola instancia del back).
 
 ## Historial y privacidad
 

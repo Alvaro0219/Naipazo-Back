@@ -24,23 +24,27 @@ async function paginate(model, pipeline, { skip, limit }) {
  * Ranking por partidas ganadas (`by: 'won'`) o por fichas ganadas (`by: 'chips'`).
  * `period: 'all'` usa las estadísticas acumuladas del usuario; `week`/`month` (últimos 7/30 días)
  * se calculan desde las partidas y el ledger. En período, "fichas" es el resultado neto de apuestas.
+ * `mode`: tablas separadas para 1 vs 1 (`stats`) y 2 vs 2 (`statsTwoVsTwo`).
  */
-export async function getRanking({ by = 'won', period = 'all' }, { skip, limit }) {
+export async function getRanking({ by = 'won', period = 'all', mode = '1v1' }, { skip, limit }) {
+  const statsField = mode === '2v2' ? 'statsTwoVsTwo' : 'stats';
+  // Las partidas viejas no tienen modo: son 1 vs 1
+  const modeMatch = mode === '2v2' ? { 'config.mode': '2v2' } : { 'config.mode': { $ne: '2v2' } };
   let rows;
   let total;
 
   if (period === 'all') {
-    const filter = { isActive: true, 'stats.played': { $gt: 0 } };
-    if (by === 'chips') filter['stats.chipsWon'] = { $gt: 0 };
+    const filter = { isActive: true, [`${statsField}.played`]: { $gt: 0 } };
+    if (by === 'chips') filter[`${statsField}.chipsWon`] = { $gt: 0 };
     const sort = by === 'chips'
-      ? { 'stats.chipsWon': -1, 'stats.won': -1, _id: 1 }
-      : { 'stats.won': -1, 'stats.played': 1, _id: 1 };
+      ? { [`${statsField}.chipsWon`]: -1, [`${statsField}.won`]: -1, _id: 1 }
+      : { [`${statsField}.won`]: -1, [`${statsField}.played`]: 1, _id: 1 };
     const [users, count] = await Promise.all([
-      User.find(filter).sort(sort).skip(skip).limit(limit).select('username stats').lean(),
+      User.find(filter).sort(sort).skip(skip).limit(limit).select(`username ${statsField}`).lean(),
       User.countDocuments(filter)
     ]);
     rows = users.map((u) => ({
-      userId: String(u._id), username: u.username, won: u.stats.won, played: u.stats.played, chips: u.stats.chipsWon
+      userId: String(u._id), username: u.username, won: u[statsField].won, played: u[statsField].played, chips: u[statsField].chipsWon
     }));
     total = count;
   } else {
@@ -50,7 +54,7 @@ export async function getRanking({ by = 'won', period = 'all' }, { skip, limit }
         { $match: { type: { $in: BET_TYPES }, createdAt: { $gte: since } } },
         // Sin las apuestas de salas privadas (P5)
         { $lookup: { from: 'matches', localField: 'refId', foreignField: '_id', as: 'match' } },
-        { $match: { 'match.config.isPrivate': { $ne: true } } },
+        { $match: { 'match.config.isPrivate': { $ne: true }, ...Object.fromEntries(Object.entries(modeMatch).map(([k, v]) => [`match.${k}`, v])) } },
         { $group: { _id: '$userId', chips: { $sum: '$amount' } } },
         { $match: { chips: { $gt: 0 } } },
         ...withActiveUser,
@@ -58,8 +62,10 @@ export async function getRanking({ by = 'won', period = 'all' }, { skip, limit }
       ], { skip, limit }));
     } else {
       ({ rows, total } = await paginate(Match, [
-        { $match: { status: 'finished', endedAt: { $gte: since }, 'config.isPrivate': { $ne: true } } },
+        { $match: { status: 'finished', endedAt: { $gte: since }, 'config.isPrivate': { $ne: true }, ...modeMatch } },
         { $unwind: '$players' },
+        // 2 vs 2: el compañero de quien abandonó queda sin resultado y no cuenta
+        { $match: { 'players.result': { $ne: 'no-result' } } },
         {
           $group: {
             _id: '$players.userId',

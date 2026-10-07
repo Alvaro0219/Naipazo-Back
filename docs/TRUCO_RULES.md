@@ -7,8 +7,8 @@ cambiaron por consulta.
 
 ## Alcance
 
-- 1 vs 1 en la UI. El motor ya trabaja con **equipos** (asientos alternados 0/1/0/1), así que 2 vs 2
-  requiere solo UI y pruebas, no cambios de modelo.
+- 1 vs 1 y **2 vs 2** (M8). El motor trabaja con **equipos** (asientos alternados 0/1/0/1); las reglas propias
+  del 2 vs 2 están al final de este documento.
 - **Sin flor [elegida]**: por ahora no se implementa. `createMatchState` rechaza `withFlor: true`
   (`FLOR_NOT_SUPPORTED`) y las acciones `CALL_FLOR`/`CALL_CONTRAFLOR*` responden `UNKNOWN_ACTION`.
   Con tres cartas del mismo palo se canta envido normal (20 + las dos más altas).

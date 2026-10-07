@@ -6,7 +6,10 @@ import { Room } from '../../models/Room.js';
 import { User } from '../../models/User.js';
 import { getAvailableActions } from '../../game/truco/index.js';
 import { setTestSink } from '../../sockets/emitter.js';
+import * as adminService from '../adminService.js';
 import { settleMatchBets } from '../betService.js';
+import * as historyService from '../historyService.js';
+import { getRanking } from '../rankingService.js';
 import * as matchService from '../matchService.js';
 import * as rematchService from '../rematchService.js';
 import * as roomService from '../roomService.js';
@@ -330,6 +333,66 @@ describe.skipIf(!hasTestDb)('2 vs 2 (integración)', () => {
       rematchService.declineRematch(players[2].id, matchId);
       expect(emissions.filter((e) => e.event === 'game:rematch').at(-1).data).toMatchObject({ state: 'declined', by: players[2].id });
       await expect(rematchService.requestRematch(players[1].id, matchId)).rejects.toMatchObject({ code: 'REMATCH_UNAVAILABLE' });
+    });
+  });
+
+  describe('historial, ranking y reportes', () => {
+    it('el historial muestra modo, compañero y rivales; el detalle no revela cartas ajenas', async () => {
+      const { players, matchId } = await fullTable({ bet: 100 });
+      const [a1, b1, a2, b2] = players;
+      await matchService.abandonMatch(b1.id, matchId);
+      await waitFor(async () => (await Match.findById(matchId).lean()).betsSettled);
+
+      const { items } = await historyService.listMyMatches(b2.id, { skip: 0, limit: 10 });
+      expect(items[0]).toMatchObject({
+        config: { mode: '2v2', bet: 100 }, result: 'no-result', partner: { id: b1.id }, chipsNet: 0
+      });
+      expect(items[0].rivals.map((r) => r.id).sort()).toEqual([a1.id, a2.id].sort());
+      const winner = (await historyService.listMyMatches(a1.id, { skip: 0, limit: 10 })).items[0];
+      expect(winner).toMatchObject({ result: 'won', partner: { id: a2.id }, chipsNet: 50 });
+
+      const detail = await historyService.getMatchDetail(a1.id, matchId);
+      const logs = await MatchHandLog.find({ matchId }).lean();
+      const json = JSON.stringify(detail);
+      for (const log of logs) {
+        for (const [owner, cards] of Object.entries(log.dealt)) {
+          if (owner === a1.id) continue;
+          const played = new Set(log.events.filter((e) => e.action === 'PLAY_CARD').map((e) => e.payload.cardId));
+          for (const card of cards) if (!played.has(card)) expect(json).not.toContain(`"${card}"`);
+        }
+      }
+      expect(json).not.toContain('"signs"');
+    });
+
+    it('el ranking separa 1 vs 1 y 2 vs 2 (también por período)', async () => {
+      const { matchId } = await fullTable({ bet: 100 });
+      const rt = await playToEnd(matchId, 21);
+      await waitFor(async () => (await Match.findById(matchId).lean()).status === 'finished');
+      const winners = rt.state.players.filter((p) => p.team === rt.state.winnerTeam).map((p) => p.id).sort();
+
+      for (const period of ['all', 'week']) {
+        const twoVsTwo = await getRanking({ by: 'won', period, mode: '2v2' }, { skip: 0, limit: 10 });
+        expect(twoVsTwo.items.filter((r) => r.won > 0).map((r) => r.userId).sort()).toEqual(winners);
+        const oneVsOne = await getRanking({ by: 'won', period, mode: '1v1' }, { skip: 0, limit: 10 });
+        expect(oneVsOne.items).toEqual([]);
+      }
+    });
+
+    it('el reporte de flujos de fichas contempla las privadas 2 vs 2', async () => {
+      const players = [];
+      for (let i = 0; i < 4; i++) players.push(await createUser({ chips: true }));
+      for (let n = 0; n < 3; n++) {
+        const room = await create2v2(players[0], { bet: 100, isPrivate: true });
+        for (const [i, p] of players.slice(1).entries()) await roomService.joinRoomByCode(p, room.code, { seat: i + 1 });
+        const doc = await Room.findById(room.id).lean();
+        for (const p of players) await matchService.attachSocket(String(doc.matchId), p.id, fakeSocket(`s-${p.id}-${n}`));
+        // Siempre abandona el del asiento 1 (pareja B): la pareja A gana
+        await matchService.abandonMatch(players[1].id, String(doc.matchId));
+        await waitFor(async () => (await Match.findById(doc.matchId).lean()).betsSettled);
+      }
+      const flows = await adminService.chipFlows({ days: 30, minMatches: 3 });
+      const pair = flows.find((f) => f.giver.id === players[1].id && f.receiver.id === players[0].id);
+      expect(pair).toMatchObject({ matches: 3, giverWins: 0, oneDirection: true });
     });
   });
 });
